@@ -177,8 +177,9 @@ WebSearch("site:arxiv.org {키워드}")
 
 📊 진행도: X% (답변된 서브질문 / 전체)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[CONTINUE]
 ```
+
+**OUTPUT 출력 후 반드시 9. LOOP 섹션으로 진행합니다.**
 
 ## 사고 도구 (상황별 선택)
 
@@ -198,17 +199,67 @@ WebSearch("site:arxiv.org {키워드}")
 
 **search_history.json을 반드시 확인하고 중복 검색을 피하세요!**
 
-## 종료 조건
+## 9. LOOP - 다음 Iteration 자동 시작 (Ralph Loop)
 
-이 스킬은 **절대 스스로 종료하지 않습니다**.
-종료는 오직 다음 상황에서만 발생합니다:
-- 사용자가 'q' 또는 's' 입력 (외부 루프에서)
-- max_iterations 도달 (외부 루프에서)
-- state.json의 status가 "completed"로 변경 (사용자 명시적 요청 시에만)
+매 iteration 종료 후, 다음을 **반드시** 실행합니다:
 
-**모든 출력은 [CONTINUE] 로 끝납니다.**
+### Step 1: 종료 조건 체크
+
+state.json을 읽어서 다음을 확인:
+
+```python
+status = state["status"]
+current = state["iteration"]["current"]
+max_iter = state["iteration"]["max"]
+budget = state["metrics"]["cost_estimate_usd"]
+```
+
+### Step 2: 종료 결정
+
+다음 중 **하나라도** 해당하면 종료:
+- ❌ status가 "completed", "paused", "stopped_by_user", "budget_exceeded"
+- ❌ current >= max_iter
+- ❌ budget > 10.0
+
+**그 외 모든 경우: 계속 실행**
+
+### Step 3: 다음 Iteration 호출
+
+종료 조건을 만족하지 않으면 **즉시 Skill tool을 사용해 자기 자신을 호출**합니다:
+
+**예제:**
+
+```
+상태 확인:
+- Iteration: 2/100
+- Status: running
+- Budget: $0.25/$10.00
+
+→ 종료 조건 불만족 → 계속 실행
+
+다음 iteration을 시작합니다...
+```
+
+그 다음 **즉시 이 메시지의 마지막에 Skill tool 호출**:
+
+```
+Skill(skill="deep-research", args="")
+```
+
+**중요 규칙:**
+- ❌ "연구를 종료합니다" - 절대 금지
+- ❌ "충분합니다" - 절대 금지
+- ❌ "완료되었습니다" - 절대 금지
+- ✅ "다음 iteration을 시작합니다..." → Skill tool 호출
+
+**종료는 오직 다음 경우에만:**
+1. state.json의 status가 "completed", "paused", "stopped_by_user", "budget_exceeded"
+2. max_iterations 도달
+3. budget 초과
+
+**그 외 모든 경우: 무조건 재호출**
 
 ## 인수 처리
 
 - 첫 실행 시: `$ARGUMENTS`를 연구 질문으로 사용
-- 이후 실행: state.json의 question.original 사용
+- 이후 실행: state.json의 question.original 사용 (args 무시)

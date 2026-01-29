@@ -54,20 +54,23 @@ def main():
             should_stop = True
             reason = "Loop drift detected, forcing stop"
 
-    # 결정 출력
+    # 결정 출력 및 exit code 결정
     if should_stop:
+        # 종료 허용: exit code 0
         output = {
-            "decision": "allow",  # 종료 허용
+            "decision": "allow",
             "reason": reason
         }
+        print(json.dumps(output))
+        sys.exit(0)
     else:
+        # 종료 차단: exit code 1 (non-zero) - Ralph Loop 패턴
         output = {
-            "decision": "block",  # 계속 강제
-            "reason": f"Iteration {iteration}/{max_iter} - Continue research. Check .research/state.json for current progress."
+            "decision": "block",
+            "reason": f"🔬 Iteration {iteration}/{max_iter} in progress. Research continues automatically. Use 'q' to stop or check .research/state.json for status."
         }
-
-    print(json.dumps(output))
-    sys.exit(0)
+        print(json.dumps(output))
+        sys.exit(1)  # Non-zero exit code blocks termination
 
 
 if __name__ == "__main__":

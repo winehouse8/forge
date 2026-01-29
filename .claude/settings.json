@@ -8,6 +8,16 @@
     "MCP_TIMEOUT": "30000"
   },
 
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python3 .claude/hooks/stop-hook.py",
+        "statusMessage": "Checking if research should continue..."
+      }]
+    }]
+  },
+
   "permissions": {
     "allow": [
       "Read(.research/**)",

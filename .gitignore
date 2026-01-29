@@ -1,0 +1,23 @@
+# Research data (세션별 데이터)
+.research/
+
+# Local settings
+.claude/settings.local.json
+
+# Downloaded papers (용량)
+*.pdf
+
+# Temp files
+tmp.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Log files
+*.log

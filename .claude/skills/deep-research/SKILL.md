@@ -2,8 +2,7 @@
 name: deep-research
 description: 사용자가 중단할 때까지 무한 반복하며 주제를 심층 연구합니다. 복잡한 질문, 학술적 조사, 다각도 분석이 필요할 때 사용합니다. /deep-research [질문]으로 호출합니다.
 argument-hint: [research question]
-disable-model-invocation: true
-allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Task
+allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Task, Skill
 ---
 
 # Deep Research Skill v4

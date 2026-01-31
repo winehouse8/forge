@@ -124,31 +124,29 @@ def main():
     # https://code.claude.com/docs/en/hooks#common-input-fields
     #
     # 알고리즘:
-    # 1. rabbit-hole 시작 시: session_id를 .research/current/.session_id에 저장
+    # 1. rabbit-hole 시작 시: session_id를 .research/.rh_session_id에 저장
     # 2. stop-hook 실행 시: hook_input의 session_id와 저장된 값 비교
     # 3. 일치 → 현재 세션이 rabbit-hole 실행 중 → Ralph Loop
     # 4. 불일치 → 다른 세션 → 정상 종료
     # ═══════════════════════════════════════════════════════════════
 
-    SESSION_ID_FILE = ".research/current/.session_id"
+    SESSION_ID_FILE = ".research/.rh_session_id"
     current_session_id = hook_input.get("session_id", "")
 
     is_rabbit_hole_session = False
 
-    if os.path.exists(CURRENT_SESSION_STATE):
-        # state.json 존재 → rabbit-hole 세션이 어딘가 존재함
-        # 하지만 현재 세션인지 확인 필요
-        if os.path.exists(SESSION_ID_FILE):
-            try:
-                with open(SESSION_ID_FILE, 'r') as f:
-                    saved_session_id = f.read().strip()
+    # state.json 존재 여부와 무관하게 session_id만 체크
+    if os.path.exists(SESSION_ID_FILE):
+        try:
+            with open(SESSION_ID_FILE, 'r') as f:
+                saved_session_id = f.read().strip()
 
-                # session_id 일치 여부 확인
-                if current_session_id and current_session_id == saved_session_id:
-                    # 현재 세션이 rabbit-hole 실행 중!
-                    is_rabbit_hole_session = True
-            except:
-                pass
+            # session_id 일치 여부 확인
+            if current_session_id and current_session_id == saved_session_id:
+                # 현재 세션이 rabbit-hole 실행 중!
+                is_rabbit_hole_session = True
+        except:
+            pass
 
     if not is_rabbit_hole_session:
         # 일반 작업 또는 다른 세션 → 정상 종료 허용 (Ralph Loop 미적용)
@@ -198,13 +196,14 @@ def main():
         print(json.dumps(output))
         sys.exit(0)
     else:
-        # 종료 차단: exit code 1 (Ralph Loop 무한 탐험!)
+        # 종료 차단: JSON + exit 0 (Ralph Loop 무한 탐험!)
+        # 공식 문서: "Claude Code only processes JSON on exit 0"
         output = {
             "decision": "block",
             "reason": f"🐰 Iteration {iteration} | Ralph Loop 활성화: 사용자가 중단할 때까지 무한 탐험!"
         }
         print(json.dumps(output))
-        sys.exit(1)  # Non-zero exit code blocks termination
+        sys.exit(0)  # ✅ exit 0 필수! (JSON 파싱을 위해)
 
 
 if __name__ == "__main__":

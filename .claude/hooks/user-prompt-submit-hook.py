@@ -32,8 +32,8 @@ def main():
     )
 
     if is_rabbit_hole_command and session_id:
-        # .research/current/.session_id 파일에 저장
-        session_id_file = Path(".research/current/.session_id")
+        # .research/.rh_session_id 파일에 저장 (symlink 문제 회피)
+        session_id_file = Path(".research/.rh_session_id")
         session_id_file.parent.mkdir(parents=True, exist_ok=True)
 
         with open(session_id_file, 'w') as f:

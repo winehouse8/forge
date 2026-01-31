@@ -194,135 +194,16 @@ LLM 직관 믿기
 ## 🔄 사이클 (Rabbit Hole Loop)
 
 ```
-1. LOAD      - 상태 로드 (curiosity_queue + info_hubs)
-2. SELECT    - 가장 흥미로운 구멍 선택
-3. DIG       - 구멍 파기 (자유로운 탐색 + 허브 발견)
-4. REFLECT   - 더 팔까? vs Pivot?
-5. SAVE      - 상태 저장 (큐 + 허브 리스트)
-6. OUTPUT    - 진행 상황 출력
-7. LOOP      - 다음 구멍으로 (Ralph Loop)
+1. LOAD  - 상태 로드
+2. DIG   - 자유 탐색 (구멍 선택 → 검색 → 발견 → 이해 → 검증 → 판단)
+3. SAVE  - 상태 저장 + 출력
+4. LOOP  - 다음으로
 ```
 
-**Note:** HUB_SCOUT는 선택적 (DIG 중에 자연스럽게 허브 발견)
+**철학:** 단순하고 자연스럽게. SELECT, REFLECT, OUTPUT은 DIG와 SAVE에 자연스럽게 통합됨.
 
 ---
 
-## 0. HUB_SCOUT (선택적 - 정보의 허브 탐색)
-
-**DIG 중에 자연스럽게 허브를 발견하는 것을 권장합니다.**
-
-이 단계는 선택적입니다. 굳이 미리 허브를 찾지 않아도, DIG 중에 좋은 출처를 발견하면 그때 info_hubs.json에 추가하면 됩니다.
-
-### 선택적 실행
-
-```python
-# Option A: 자연스러운 발견 (권장)
-# DIG 중에 좋은 출처 발견 → 즉시 허브 추가
-
-# Option B: 명시적 탐색 (선택)
-if user_wants_hub_scout or topic_completely_new:
-    execute_hub_scout()
-```
-
-### 프로세스
-
-```markdown
-질문: "$ARGUMENTS"
-
-Step 1: 주제 분석
-  Extended Thinking:
-    이 주제의 정보가 집중된 곳은 어디인가?
-    - 학술 분야? → arXiv, Google Scholar, PubMed
-    - 기술 분야? → GitHub, HackerNews, Stack Overflow
-    - 비즈니스? → HBR, McKinsey, specific industry sites
-    - 스타트업? → YC, a16z, TechCrunch
-    - 특정 커뮤니티? → Reddit, Discord, 전문 포럼
-
-Step 2: 허브 후보 검색
-  WebSearch("best resources for [주제]")
-  WebSearch("[주제] expert blogs sites")
-  WebSearch("[주제] research papers where to find")
-  WebSearch("[주제] community forums")
-
-Step 3: 허브 식별 및 평가
-  검색 결과에서:
-  - 자주 언급되는 도메인/사이트
-  - 전문가들이 추천하는 출처
-  - 고품질 콘텐츠가 집중된 곳
-
-  각 후보에 대해:
-  - domain: 사이트 도메인
-  - name: 사이트/조직 이름
-  - category: 분류 (academic, tech, business, community 등)
-  - quality_score: 초기 품질 점수 (0.7 ~ 1.0)
-  - reason: 왜 허브인지
-
-Step 4: 허브 리스트 초기화
-  info_hubs.json 생성:
-  {
-    "hubs": [...identified hubs...],
-    "category_index": {...}
-  }
-```
-
-### 예시
-
-```markdown
-질문: "양자 컴퓨팅의 최신 발전 상황"
-
-Step 1: 주제 분석
-  - 학술/연구 분야 (물리학, CS)
-  - 기업 R&D (IBM, Google, Microsoft)
-  - 뉴스/트렌드
-
-Step 2: 허브 후보 검색
-  → "best quantum computing resources"
-  → "quantum computing research papers"
-  → "quantum computing news sites"
-
-Step 3: 식별된 허브
-  1. arxiv.org/quant-ph (학술, 0.95)
-  2. research.ibm.com/quantum (기업 연구, 0.90)
-  3. research.google/quantum (기업 연구, 0.90)
-  4. quantumscijournal.com (뉴스, 0.75)
-
-Step 4: info_hubs.json 저장
-```
-
-### 출력
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏛️ 정보의 허브 탐색 완료
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📍 발견된 허브 (4개):
-
-1. 🎓 arxiv.org/quant-ph
-   카테고리: academic
-   품질: ★★★★★ (0.95)
-   "양자 물리학 프리프린트"
-
-2. 🏢 research.ibm.com/quantum
-   카테고리: corporate_research
-   품질: ★★★★☆ (0.90)
-   "IBM 양자 컴퓨팅 연구"
-
-3. 🏢 research.google/quantum
-   카테고리: corporate_research
-   품질: ★★★★☆ (0.90)
-   "Google 양자 AI"
-
-4. 📰 quantumscijournal.com
-   카테고리: news
-   품질: ★★★☆☆ (0.75)
-   "양자 컴퓨팅 뉴스"
-
-💡 이 허브들을 활용해 검색 품질을 높입니다!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
----
 
 ## 1. LOAD (상태 로드)
 
@@ -380,57 +261,30 @@ relevant_hubs = hm.get_hubs_for_topic(current_hole.topic)
 
 ---
 
-## 2. SELECT (가장 흥미로운 구멍 선택)
+## 2. DIG (자유 탐색) - 핵심 프로세스
 
-**Extended Thinking으로 선택:**
+**철학: 선택도, 탐색도, 판단도 모두 자유롭게**
+
+### 구멍 선택 (직관)
 
 ```markdown
-현재 큐:
+현재 큐에서 가장 끌리는 구멍 선택:
 
-1. hole_4: "Majorana 페르미온"
-   - 興미: 0.90
-   - depth: 0 (아직 안 팠음)
-   - parent: "토폴로지 코드"
+Extended Thinking:
+  "어떤 구멍이 가장 끌리나?"
 
-2. hole_7: "Kitaev chain"
-   - 興미: 0.80
-   - depth: 0
-   - parent: "Majorana"
+  큐:
+  - hole_4 "Majorana" (興미: 0.90, depth: 0)
+  - hole_7 "Kitaev" (興미: 0.80, depth: 0)
+  - hole_2 "비용" (興미: 0.65, depth: 1)
 
-3. hole_2: "비용 하락"
-   - 興미: 0.65
-   - depth: 1 (조금 팠음)
+  직관:
+  "Majorana가 가장 흥미로워! 실용화와 직결되는 듯"
 
-어떤 구멍이 가장 끌리나?
-
-직관:
-- hole_4 "Majorana": 방금 발견, 매우 흥미로움!
-- hole_7 "Kitaev": 이론적, 덜 실용적
-- hole_2 "비용": 이미 좀 팠음, 덜 흥미로움
-
-선택: hole_4 (Majorana)
-
-이유:
-- 가장 높은 興미 (0.90)
-- 아직 안 파봤음 (depth: 0)
-- 실용화와 직결되는 듯
+  → hole_4 선택
 ```
 
-**자연스러운 선택 (룰베이스 아님!):**
-
-```python
-# LLM이 Extended Thinking으로 판단
-# 単純 max(興미) 아님
-# 직관 + 맥락 고려
-selected_hole = cm.select_most_interesting(
-    holes=holes,
-    context=current_context
-)
-```
-
----
-
-## 3. DIG (구멍 파기) - 핵심 프로세스
+### 탐색 프로세스
 
 **철학: 자유롭게 파되, 사고 도구는 필요할 때 참고**
 
@@ -450,7 +304,7 @@ DIG는 자유로운 탐색입니다:
      - verify_4layers.md (사실 확인)
      - curiosity_heuristics.md (흥미 판단)
 
-  🔁 더 팔까? → YES: 계속 | NO: REFLECT로
+  🔁 더 팔까? → YES: 계속 | NO: 다음 구멍으로
 ```
 
 **핵심 활동 (순서 자유):**
@@ -705,28 +559,7 @@ depth: 2 (수렴 모드)
 
 ---
 
-## 4. REFLECT (더 팔까? vs Pivot?)
-
-```markdown
-현재 구멍 완료:
-  hole_4 "Majorana"
-  depth: 1
-  status: "explored"
-  understanding: 0.75
-
-새 발견:
-  hole_7 "Kitaev" (興미 0.80)
-  hole_8 "Microsoft" (興미 0.90)
-
-다음 선택:
-  → hole_8 (가장 흥미로움)
-
-→ 다음 iteration: SELECT (hole_8)
-```
-
----
-
-## 5. SAVE (상태 저장)
+## 3. SAVE (상태 저장 + 출력)
 
 ```python
 # 구멍 상태 업데이트
@@ -748,62 +581,33 @@ state["iteration"]["current"] += 1
 state["current_hole"] = None  # 이번 구멍 완료
 
 mm.save_state(state)
-```
 
----
-
-## 6. OUTPUT (진행 상황 출력)
-
-```
+# 진행 상황 출력
+print(f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🐰 Rabbit Hole #3 완료
+🐰 Rabbit Hole #{state['iteration']['current']} 완료
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🕳️ 구멍: "Majorana 페르미온"
+🕳️ 구멍: "{selected_hole.topic}"
 
-📊 파기 과정 (1회):
-
-[1차 파기] depth: 0 → 1
-  🔍 발산: 4개 각도
-  🔍 검색: 4개 쿼리 (병렬)
-  💡 발견:
-     - "Kitaev chain" (興미 0.80) → 큐 추가
-     - "Microsoft qubit" (興미 0.90) → 큐 추가
-  📖 수렴: "자기 자신 = 반입자"
-  ✓✓ 검증: 3개 소스 (신뢰도 0.95)
-
-  💭 반성: Microsoft가 더 흥미로움!
+💡 발견:
+  {', '.join([f'"{h.topic}" (興미 {h.interest:.2f})' for h in new_holes])}
 
 📈 최종:
-  depth: 1
-  이해도: 75%
-  status: explored
+  depth: {selected_hole.depth}
+  이해도: {selected_hole.understanding*100:.0f}%
+  status: {selected_hole.status}
 
-📊 큐 업데이트:
-  1. 🔥 hole_8: "Microsoft qubit" (興미 0.90) ← 다음!
-  2. 📌 hole_7: "Kitaev chain" (興미 0.80)
-  3. 📌 hole_2: "비용 하락" (興미 0.65)
-
-🗺️ 발견 지도:
-  hole_1 "양자 오류율"
-    └─ hole_2 "토폴로지 코드"
-         └─ hole_4 "Majorana"
-              ├─ hole_7 "Kitaev"
-              └─ hole_8 "Microsoft" ← 다음
-
-🏛️ 정보 허브 현황:
-  ★★★★★ arxiv.org (hit: 15, 품질: 0.95)
-  ★★★★☆ nature.com (hit: 8, 품질: 0.88)
-  ★★★★☆ physicstoday.org (hit: 3, 품질: 0.90) ← 새로 발견!
-  ★★★☆☆ wikipedia.org (hit: 12, 품질: 0.70)
+📊 큐: {len(queue.holes)}개 구멍 대기
 
 🐰 다음 구멍을 팝니다...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
 ```
 
 ---
 
-## 7. LOOP (다음 구멍으로)
+## 4. LOOP (다음 구멍으로)
 
 **Ralph Loop 패턴:**
 

@@ -1,15 +1,25 @@
 # 연구 사이클 (9단계) + Memory Blocks + Multi-Perspective Reasoning
 
 **문서:** 04-research-cycle.md
-**최종 수정일:** 2026-02-01 (v5.1 - Multi-Layered Thinking Added)
+**최종 수정일:** 2026-02-01 (v5.2 - Progressive Disclosure Applied)
 **수정자:** Claude Sonnet 4.5
-**관련 파일:** `.claude/skills/deep-research/SKILL.md`, `config.json:16-36`, `.research/memory_manager.py`
-**주요 개선:** REFLECT 단계에 6-Layer Multi-Perspective Reasoning 통합 (2025-2026 arXiv 연구 기반)
+**관련 파일:**
+- `.claude/skills/deep-research/SKILL.md` (413 lines, 12KB - 개요)
+- `.claude/skills/deep-research/references/reflect_multilayer.md` (507 lines - REFLECT 상세)
+- `.claude/skills/deep-research/references/plan_2phase.md` (383 lines - PLAN 상세)
+- `.claude/skills/deep-research/references/verify_4layers.md` (438 lines - VERIFY 상세)
+- `.claude/skills/deep-research/references/loop_mechanisms.md` (600+ lines - LOOP 상세)
+- `.claude/skills/deep-research/references/thinking_tools.md` (사고 도구 18개 예제)
+- `config.json:16-36`, `.research/memory_manager.py`
+**주요 개선:**
+- v5.1: REFLECT 단계에 6-Layer Multi-Perspective Reasoning 통합 (2025-2026 arXiv 연구 기반)
+- v5.2: Progressive Disclosure 패턴 적용 (SKILL.md 839→413 lines, 상세 내용 references/ 분리)
 
 ---
 
 ## 목차
 - [사이클 개요](#사이클-개요)
+- [Progressive Disclosure 구조](#progressive-disclosure-구조)
 - [각 단계 상세](#각-단계-상세)
 - [병렬 처리 전략](#병렬-처리-전략)
 - [사고 도구](#사고-도구)
@@ -43,6 +53,68 @@
 │       │                                                  │
 │       └─────────────────────────────────────────────────┘
 ```
+
+---
+
+## Progressive Disclosure 구조
+
+### 정보 계층
+
+**Level 1 (개요 - SKILL.md):**
+- 파일: `.claude/skills/deep-research/SKILL.md` (413 lines, 12KB)
+- 대상: 처음 사용하거나 빠른 참조가 필요한 경우
+- 내용:
+  - 9단계 사이클 흐름
+  - 각 단계별 핵심 개념 (1-2 문단)
+  - 주요 코드 예시 (간략)
+  - references/ 링크
+
+**Level 2 (상세 - references/):**
+- 파일:
+  - `references/reflect_multilayer.md` (507 lines) - REFLECT 6-Layer 완전 가이드
+  - `references/plan_2phase.md` (383 lines) - PLAN 2-Phase 전략 상세
+  - `references/verify_4layers.md` (438 lines) - VERIFY 4-Layer 검증 시스템
+  - `references/loop_mechanisms.md` (600+ lines) - Ralph Loop + Loop Drift 방지
+  - `references/thinking_tools.md` - 사고 도구 18개 실전 예제
+- 대상: 구현 시 깊이 있는 이해가 필요한 경우
+- 내용:
+  - 각 단계별 전체 메커니즘
+  - 실전 예제 (양자 컴퓨팅 등)
+  - 자주 하는 실수 vs 올바른 예
+  - 체크리스트 및 검증 방법
+
+### 사용 가이드
+
+**빠른 시작 (처음 사용):**
+```
+1. SKILL.md 전체 읽기 (10분)
+2. 9단계 흐름 이해
+3. 첫 연구 시작
+```
+
+**깊이 있는 구현 (특정 단계 개선):**
+```
+1. SKILL.md에서 해당 단계 섹션 읽기
+2. "상세: references/XXX.md" 링크 클릭
+3. 상세 문서에서 전체 메커니즘 학습
+4. 실전 예제 참고하여 구현
+```
+
+**디버깅 (문제 발생 시):**
+```
+1. 해당 단계의 references/ 문서 열기
+2. "자주 하는 실수" 섹션 확인
+3. 체크리스트로 검증
+```
+
+### 파일 크기 비교
+
+| 버전 | 크기 | 감소율 |
+|------|------|--------|
+| **v5.1 (Before)** | SKILL.md: 839 lines, 26KB | - |
+| **v5.2 (After)** | SKILL.md: 413 lines, 12KB | -51% |
+| | references/: 4개 파일, ~2400 lines | - |
+| **효과** | 개요는 간결, 상세는 분리 | 가독성 ↑ |
 
 ---
 
@@ -169,6 +241,12 @@ truncated_findings = mm.truncate_findings_for_context(max_findings=30)
 
 **6-Layer 구조:**
 
+**📖 상세 가이드:** `references/reflect_multilayer.md` (507 lines)
+- 각 Layer별 전체 프로세스
+- 양자 컴퓨팅 실전 예제
+- 자주 하는 실수 vs 올바른 예
+- SCAMPER, TRIZ 상세 활용법
+
 #### Layer 1: 현황 파악 (Situation Assessment)
 - 현재 iteration, 핵심 사실, 미해결 질문
 - Active Hypotheses 상태
@@ -279,6 +357,13 @@ Phase C: Synthesis (합)
 **설정:** `config.json:16-36`
 
 **구조:** 발산(Divergent) → 수렴(Convergent) → 중복제거(Deduplication)
+
+**📖 상세 가이드:** `references/plan_2phase.md` (383 lines)
+- Phase 0-3 전체 프로세스
+- Divergent/Convergent Thinking 상세
+- 평가 기준 및 점수 산정법
+- 전략 변경 패턴 (Academic→Web 등)
+- 품질 체크리스트
 
 #### Phase 0: Active Hypotheses 확인
 
@@ -460,6 +545,13 @@ Read(".research/papers/transformer.pdf")
 **파일:** `.claude/skills/deep-research/SKILL.md:208-231`
 
 **상세:** [05-verification.md](./05-verification.md) 참조
+
+**📖 상세 가이드:** `references/verify_4layers.md` (438 lines)
+- Layer 1-4 전체 프로세스
+- 출처별 신뢰도 테이블 (Peer-reviewed 0.9 ~ 블로그 0.5)
+- Cross-Validation 공식 (1 소스 0.6 → 3+ 소스 0.95)
+- Self-Consistency 체크 (역방향, 대안, 시간)
+- 종합 예시 및 자주 하는 실수
 
 **4계층 검증:**
 
@@ -809,6 +901,15 @@ mm.update_semantic_memory(findings_md_content)
 **파일:** `.claude/skills/deep-research/SKILL.md:402-461`
 
 **상세:** [03-ralph-loop.md](./03-ralph-loop.md) 참조
+
+**📖 상세 가이드:** `references/loop_mechanisms.md` (600+ lines)
+- Ralph Loop 개념 및 출처 (Alibaba Cloud, Google ADK)
+- 이중 보호 (SKILL.md + stop-hook.py)
+- Step 1-3 상세 프로세스
+- Loop Drift 방지 4가지 규칙
+- search_history.json 중복 체크 메커니즘
+- Reflexion 메모리 활용
+- 정상 진행/종료 종합 예시
 
 **종료 조건 체크:**
 

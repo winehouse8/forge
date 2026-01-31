@@ -32,7 +32,9 @@ Working Memory (최근 10 iterations):
 
 ### 1. LOAD (상태 로드) - Session Auto-Detection + Memory Blocks
 
-**자동 세션 관리 (Zero-config):**
+**자동 세션 관리 (Zero-config - LLM 직접 판단):**
+
+먼저 기존 세션 목록을 확인합니다:
 
 ```python
 from session_manager import SessionManager
@@ -41,8 +43,33 @@ from memory_manager import MemoryManager
 sm = SessionManager()
 current_question = "$ARGUMENTS"
 
-# 1. 유사 세션 자동 검색
-similar_sessions, match_type = sm.find_similar_sessions(current_question)
+# 기존 세션 목록
+existing_sessions = sm.list_sessions()
+```
+
+**Extended Thinking으로 유사도 판단:**
+
+기존 세션 목록:
+{existing_sessions를 보기 좋게 포맷}
+
+새 질문: "{current_question}"
+
+**당신의 임무:**
+1. 새 질문이 기존 세션 중 어느 것과 유사한지 판단하세요
+2. 판단 기준:
+   - "거의 동일" (exact): 같은 주제, 같은 질문 의도
+   - "유사" (similar): 관련있지만 다른 각도
+   - "다름" (none): 완전히 다른 주제
+
+3. 유사 세션이 있다면:
+   - 1개 (exact): 사용자에게 "계속" vs "새로 시작" 선택지 제공
+   - 여러개 (similar): 최대 3개까지 선택지 제공
+   - 없음 (none): 자동으로 새 세션 생성
+
+**이제 판단 후 적절한 행동을 취하세요:**
+
+```python
+# Extended Thinking 결과에 따라 분기
 
 if match_type == "exact":
     # 거의 동일한 질문 → 재개 확인

@@ -3,19 +3,18 @@
 Session Manager: Multi-session research management
 Prevents data loss when starting new research while another is in progress
 
+Similarity Detection: Uses Claude (LLM) directly, no embeddings needed!
+
 Usage:
     from session_manager import SessionManager
 
     sm = SessionManager()
 
-    # Find similar sessions (automatic)
-    similar = sm.find_similar_sessions("양자 컴퓨팅 최신 동향")
-
-    # Create new session (auto-called if no similar found)
-    session_id = sm.create_session("양자 컴퓨팅 최신 동향")
-
-    # List all sessions
+    # List sessions (Claude will judge similarity)
     sessions = sm.list_sessions()
+
+    # Create new session
+    session_id = sm.create_session("양자 컴퓨팅 최신 동향")
 
     # Switch session
     sm.switch_session(session_id)
@@ -28,17 +27,9 @@ import json
 import os
 import shutil
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from pathlib import Path
 import re
-
-# Try to import embedding functions
-try:
-    from deduplicate_search import get_embedding, cosine_similarity
-    EMBEDDING_AVAILABLE = True
-except ImportError:
-    EMBEDDING_AVAILABLE = False
-    print("⚠️  Warning: deduplicate_search not available. Similarity search disabled.", file=__import__('sys').stderr)
 
 
 SESSIONS_DIR = ".research/sessions"
@@ -274,89 +265,28 @@ class SessionManager:
 
         return os.path.abspath(os.path.join(SESSIONS_DIR, session_id))
 
-    def find_similar_sessions(
-        self,
-        question: str,
-        threshold: float = 0.8,
-        exact_threshold: float = 0.95
-    ) -> Tuple[List[Dict], str]:
+    def format_sessions_for_display(self) -> str:
         """
-        Find sessions with similar questions using embedding similarity.
-
-        Args:
-            question: Research question to compare
-            threshold: Minimum similarity for "similar" (default: 0.8)
-            exact_threshold: Minimum similarity for "exact match" (default: 0.95)
+        Format all sessions for Claude to review (no embeddings!).
 
         Returns:
-            (similar_sessions, match_type)
-            - similar_sessions: List of similar session metadata with similarity scores
-            - match_type: "exact" (>0.95), "similar" (>0.8), or "none"
+            Formatted text showing all sessions
         """
-        if not EMBEDDING_AVAILABLE:
-            # Fallback: simple string matching
-            similar = []
-            for session_id, metadata in self.index["sessions"].items():
-                if question.lower() == metadata["question"].lower():
-                    similar.append({
-                        "id": session_id,
-                        "question": metadata["question"],
-                        "similarity": 1.0,
-                        "iteration": metadata.get("iteration", 0),
-                        "status": metadata.get("status", "unknown")
-                    })
+        sessions = self.list_sessions()
 
-            match_type = "exact" if similar else "none"
-            return similar, match_type
+        if not sessions:
+            return "현재 세션 없음"
 
-        # Get embedding for new question
-        question_emb = get_embedding(question)
-        if question_emb is None:
-            return [], "none"
+        lines = []
+        for i, session in enumerate(sessions, 1):
+            question = session.get("question", "Unknown")
+            iteration = session.get("iteration", 0)
+            status = session.get("status", "unknown")
 
-        similar_sessions = []
+            lines.append(f"{i}. \"{question}\"")
+            lines.append(f"   상태: {status} | Iteration: {iteration}")
 
-        # Compare with all existing sessions
-        for session_id, metadata in self.index["sessions"].items():
-            past_question = metadata["question"]
-
-            # Get or compute embedding for past question
-            if "question_embedding" not in metadata:
-                past_emb = get_embedding(past_question)
-                if past_emb:
-                    metadata["question_embedding"] = past_emb
-                    self._save_index()  # Save embedding for future use
-            else:
-                past_emb = metadata["question_embedding"]
-
-            if past_emb is None:
-                continue
-
-            # Calculate similarity
-            similarity = cosine_similarity(question_emb, past_emb)
-
-            if similarity >= threshold:
-                similar_sessions.append({
-                    "id": session_id,
-                    "question": past_question,
-                    "similarity": round(similarity, 3),
-                    "iteration": metadata.get("iteration", 0),
-                    "status": metadata.get("status", "unknown"),
-                    "last_accessed": metadata.get("last_accessed", "")
-                })
-
-        # Sort by similarity (highest first)
-        similar_sessions.sort(key=lambda s: s["similarity"], reverse=True)
-
-        # Determine match type
-        if similar_sessions and similar_sessions[0]["similarity"] >= exact_threshold:
-            match_type = "exact"
-        elif similar_sessions:
-            match_type = "similar"
-        else:
-            match_type = "none"
-
-        return similar_sessions, match_type
+        return "\n".join(lines)
 
 
 def main():

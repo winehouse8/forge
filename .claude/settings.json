@@ -12,7 +12,7 @@
     "Stop": [{
       "hooks": [{
         "type": "command",
-        "command": "python3 .claude/hooks/stop-hook.py",
+        "command": "python3 /Users/jaewoo/Desktop/Project/dev/260131_pathfinder/forge/.claude/hooks/stop-hook.py",
         "statusMessage": "Checking if research should continue..."
       }]
     }]

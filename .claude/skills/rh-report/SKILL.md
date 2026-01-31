@@ -1,194 +1,306 @@
 ---
 name: rh-report
 description: 토끼굴 탐험 결과를 종합하여 원래 질문에 대한 최종 답변을 생성합니다.
-allowed-tools: Read, Bash
+argument-hint: [session_number] (생략 시 최신 세션)
+allowed-tools: Read, Bash, AskUserQuestion
 ---
 
 # 🎯 rh-report: 토끼굴 탐험 결과 종합
 
 지금까지 판 구멍들의 발견 사항을 종합하여 원래 질문에 대한 답변을 도출합니다.
 
-## 프로세스
+## 실행 순서
 
-1. **수집**: curiosity_queue.json에서 탐색 완료된 구멍들 수집
-2. **정리**: 이해도 높은 순으로 핵심 발견 정리
-3. **종합**: Extended Thinking + 수렴적 사고 도구로 최종 답변 도출
-
----
-
-## 실행
+### 1. 세션 선택
 
 ```python
 import json
 from pathlib import Path
+from datetime import datetime
 
-# curiosity_queue 읽기
-queue_path = Path(".research/curiosity_queue.json")
+# 세션 인덱스 로드
+index_path = Path(".research/sessions/index.json")
 
-if not queue_path.exists():
+if not index_path.exists():
     print("📭 아직 탐험을 시작하지 않았습니다.")
     print("   /rh \"궁금한 주제\"로 시작하세요!")
     exit(0)
 
-queue = json.load(open(queue_path))
-holes = queue.get("holes", [])
-initial_question = queue.get("initial_question", "")
+index = json.load(open(index_path))
+sessions = index.get("sessions", {})
 
-if not holes:
-    print("📭 아직 구멍을 발견하지 못했습니다.")
+if not sessions:
+    print("📭 저장된 세션이 없습니다.")
     exit(0)
 
-# Explored 구멍들만 수집
-explored = [h for h in holes if h.get("status") == "explored"]
+# 세션 목록 정렬 (최신순)
+sorted_sessions = sorted(
+    sessions.items(),
+    key=lambda x: x[1].get("last_accessed", ""),
+    reverse=True
+)
+```
 
-if not explored:
-    print("⚠️  아직 탐색 완료된 구멍이 없습니다.")
-    print("   조금 더 파본 후 다시 시도하세요.")
-    exit(0)
+**세션 선택 로직:**
 
-# 보고서 생성
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print("🎯 토끼굴 탐험 결과 보고서")
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-print()
-print(f"**원래 질문:** \"{initial_question}\"")
-print()
+```python
+arg = "$ARGUMENTS".strip()
 
-# 탐험 요약
-pending = [h for h in holes if h.get("status") != "explored"]
-print("## 📊 탐험 요약")
-print(f"- 파본 구멍: {len(explored)}개 ✅")
-print(f"- 큐 대기: {len(pending)}개 📌")
-print(f"- 총 발견: {len(holes)}개")
-print()
+if arg == "":
+    # 디폴트: 가장 최신 세션
+    selected_id, selected_info = sorted_sessions[0]
+    print(f"📂 최신 세션 선택: {selected_id}")
 
-# 핵심 발견 (이해도 높은 순)
-explored_sorted = sorted(explored, key=lambda h: h.get("understanding", 0), reverse=True)
-
-print("## 🔍 핵심 발견")
-print()
-
-for i, hole in enumerate(explored_sorted[:10], 1):  # 상위 10개만
-    topic = hole.get("topic", "")
-    understanding = hole.get("understanding", 0)
-    findings = hole.get("findings", [])
-    depth = hole.get("depth", 0)
-
-    print(f"### {i}. {topic}")
-    print(f"(이해도: {understanding*100:.0f}% | depth: {depth})")
-    print()
-
-    if findings:
-        # 발견 사항 표시 (최대 5개)
-        for j, finding in enumerate(findings[:5], 1):
-            text = finding.get("text", "")
-            source = finding.get("source")
-            confidence = finding.get("confidence", 0)
-
-            # 신뢰도 아이콘
-            if confidence >= 0.9:
-                icon = "✓✓"
-            elif confidence >= 0.7:
-                icon = "✓"
-            elif confidence >= 0.5:
-                icon = "~"
-            else:
-                icon = "?"
-
-            print(f"{j}. {icon} {text}")
-            if source:
-                print(f"   출처: {source}")
-
-        if len(findings) > 5:
-            print(f"   ... +{len(findings) - 5}개 발견 더")
-        print()
+elif arg.isdigit():
+    # 숫자로 선택 (1-based)
+    idx = int(arg) - 1
+    if 0 <= idx < len(sorted_sessions):
+        selected_id, selected_info = sorted_sessions[idx]
+        print(f"📂 세션 #{arg} 선택: {selected_id}")
     else:
-        print("- (세부 발견 사항 기록 없음)")
-        print()
+        print(f"❌ 세션 #{arg}가 없습니다. (1-{len(sorted_sessions)} 범위)")
+        exit(1)
 
-if len(explored_sorted) > 10:
-    print(f"... +{len(explored_sorted) - 10}개 구멍 더 탐색됨")
-    print()
+else:
+    # 세션 ID로 직접 선택
+    if arg in sessions:
+        selected_id = arg
+        selected_info = sessions[arg]
+        print(f"📂 세션 선택: {selected_id}")
+    else:
+        print(f"❌ 세션 '{arg}'를 찾을 수 없습니다.")
+        exit(1)
+```
 
-# 대기 중인 흥미로운 구멍들
-high_interest_pending = [h for h in pending if h.get("interest", 0) > 0.85]
-if high_interest_pending:
-    print("## 🔥 추가 탐험 후보 (興미 높음)")
-    print()
-    for hole in high_interest_pending[:3]:
-        print(f"- {hole.get('topic', '')} (興미: {hole.get('interest', 0):.2f})")
-    print()
+**세션이 여러 개면 목록 표시 후 선택:**
 
-print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+```python
+if len(sorted_sessions) > 1 and arg == "":
+    print("\n📋 사용 가능한 세션:")
+    print("─" * 50)
+    for i, (sid, info) in enumerate(sorted_sessions, 1):
+        q = info.get("question", "")[:40]
+        status = info.get("status", "unknown")
+        iter_count = info.get("iteration", 0)
+        last = info.get("last_accessed", "")[:10]
+        print(f"  {i}. [{status}] {q}...")
+        print(f"     iterations: {iter_count} | last: {last}")
+    print("─" * 50)
+    print(f"→ 최신 세션 #{1} 사용")
+    print("  (다른 세션: /rh-report 2)")
+    print()
 ```
 
 ---
 
-## 최종 답변 도출
+### 2. 세션 데이터 로드
 
-Extended Thinking을 사용하여 다음을 수행하세요:
+```python
+# 세션 디렉토리 경로
+session_dir = Path(selected_info.get("directory", f".research/sessions/{selected_id}"))
 
-### 1. 수렴적 사고 도구 활용
+# curiosity_queue.json 로드
+queue_path = session_dir / "curiosity_queue.json"
 
-**참고:** `.claude/skills/rabbit-hole/references/convergent_thinking.md`
+# 세션 디렉토리에 없으면 루트에서 시도 (호환성)
+if not queue_path.exists():
+    queue_path = Path(".research/curiosity_queue.json")
 
-- **오컴의 면도날**: 복잡한 설명보다 단순한 설명 우선
-- **베이지안 추론**: 증거 기반 확신도 계산
-  - 단일 신뢰 소스: 0.6
-  - 2개 소스 일치: 0.8
-  - 3개+ 소스 일치: 0.95
+if not queue_path.exists():
+    print(f"❌ {queue_path}를 찾을 수 없습니다.")
+    exit(1)
+
+queue = json.load(open(queue_path))
+holes = queue.get("holes", [])
+initial_question = selected_info.get("question", "")
+
+# 홀별 리포트 디렉토리
+holes_dir = session_dir / "holes"
+```
+
+---
+
+### 3. 지식 분류 분석
+
+**knowledge_type별 분류:**
+
+```python
+prior_holes = [h for h in holes if h.get("knowledge_type") == "prior"]
+new_holes = [h for h in holes if h.get("knowledge_type") == "new"]
+refined_holes = [h for h in holes if h.get("knowledge_type") == "refined"]
+
+explored = [h for h in holes if h.get("status") == "explored"]
+pending = [h for h in holes if h.get("status") == "pending"]
+```
+
+**논리 의존성 그래프 (depends_on):**
+
+```python
+# 논리 흐름 분석
+def get_dependency_chain(hole_id, holes_dict, visited=None):
+    """hole_id가 의존하는 모든 선행 지식 추적"""
+    if visited is None:
+        visited = set()
+    if hole_id in visited:
+        return []
+    visited.add(hole_id)
+
+    hole = holes_dict.get(hole_id)
+    if not hole:
+        return []
+
+    deps = hole.get("depends_on", [])
+    chain = list(deps)
+    for dep in deps:
+        chain.extend(get_dependency_chain(dep, holes_dict, visited))
+    return chain
+
+holes_dict = {h["id"]: h for h in holes}
+```
+
+---
+
+### 4. 보고서 출력
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 토끼굴 탐험 결과 보고서
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂 세션: {selected_id}
+📅 마지막 탐험: {last_accessed}
+
+**원래 질문:** "{initial_question}"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📊 탐험 요약
+
+| 구분 | 수량 |
+|------|------|
+| 총 발견 | {len(holes)}개 |
+| 탐색 완료 | {len(explored)}개 ✅ |
+| 큐 대기 | {len(pending)}개 📌 |
+
+### 지식 분류
+| 타입 | 수량 | 설명 |
+|------|------|------|
+| prior | {len(prior_holes)}개 | 연구 전 알던 것 |
+| new | {len(new_holes)}개 | 새로 발견한 것 🆕 |
+| refined | {len(refined_holes)}개 | 기존 지식 정교화 |
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🆕 새로 알게 된 것 (New Knowledge)
+
+{새로 발견한 hole들을 이해도 순으로 정리}
+
+### 1. {topic} (이해도: {understanding}%)
+- **요약:** {summary 또는 notes}
+- **의존:** {depends_on 목록}
+- **출처:** {source}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 📚 기존 지식 확인/정교화 (Prior/Refined)
+
+{prior, refined hole들}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🔗 논리 흐름 (Dependency Graph)
+
+{depends_on 관계를 트리로 시각화}
+
+예시:
+hole_1 컨텍스트 최적화 [prior]
+    ↓ depends_on
+hole_6 LLMLingua [new]
+    ↓ depends_on
+hole_11 LLMLingua-2 [new]
+    ↓ depends_on
+hole_16 Python 구현 [new]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🔥 추가 탐험 후보 (興미 높은 pending)
+
+{흥미 > 0.85인 pending holes}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+### 5. 홀별 리포트 참조 (있는 경우)
+
+```python
+# holes/ 디렉토리에서 상세 리포트 읽기
+if holes_dir.exists():
+    for hole in explored:
+        report_file = holes_dir / f"{hole['id']}_{hole['topic'][:20]}.md"
+        if report_file.exists():
+            # 리포트 내용 참조하여 종합
+            report_content = report_file.read_text()
+            # Extended Thinking으로 핵심 내용 추출
+```
+
+---
+
+### 6. 최종 답변 도출 (Extended Thinking)
+
+Extended Thinking을 사용하여 다음을 수행:
+
+**수렴적 사고 도구 활용:**
+- **오컴의 면도날**: 단순한 설명 우선
+- **베이지안 추론**: 증거 기반 확신도
 - **반증 가능성**: 반박 증거 고려
-- **변증법적 사고**: 대립 관점 통합 (정-반-합)
+- **변증법적 사고**: 대립 관점 통합
 
-### 2. 원래 질문에 대한 최종 답변
-
-다음 형식으로 답변을 작성하세요:
+**최종 답변 형식:**
 
 ```markdown
 ## 🎯 최종 답변
 
-**질문:** "[원래 질문]"
+**질문:** "{initial_question}"
 
 **답변:**
+[핵심 발견들을 종합한 답변 - 새로 알게 된 것 중심으로]
 
-[핵심 발견들을 종합한 답변]
-
-**확신도:** [0.00-1.00] [태그]
+**확신도:** [0.00-1.00]
 - ✓✓ VERIFIED (0.85+): 다수 신뢰 소스 일치
 - ✓ HIGH (0.70-0.84): 단일 신뢰 소스
 - ~ LIKELY (0.50-0.69): 추정
 - ? UNCERTAIN (<0.50): 불확실
 
-**핵심 근거:**
-1. [근거 1] (출처: ...)
-2. [근거 2] (출처: ...)
-3. [근거 3] (출처: ...)
+**핵심 발견 (NEW):**
+1. [새로 알게 된 것 1] (출처: ...)
+2. [새로 알게 된 것 2] (출처: ...)
+
+**기존 지식 확인:**
+- [prior/refined 중 중요한 것]
+
+**논리 흐름:**
+[depends_on 관계로 본 지식 구조]
 
 **제한 사항 / 주의점:**
-- [알려진 제한 사항이나 주의할 점]
+- [알려진 제한 사항]
 
-**추가 탐험 제안 (선택):**
-- [아직 파지 않은 흥미로운 구멍이 있다면]
+**추가 탐험 제안:**
+- [흥미 높은 pending holes]
 ```
-
-### 3. 종합 시 고려사항
-
-- **모순 처리**: 서로 다른 구멍에서 발견한 내용이 충돌하면 변증법적 사고로 통합
-- **이해도 가중치**: 이해도가 높은 구멍의 발견에 더 큰 가중치
-- **신뢰도 누적**: 같은 내용이 여러 구멍에서 발견되면 확신도 증가
-- **깊이 고려**: depth가 깊은 구멍일수록 해당 주제에 대한 통찰이 깊음
 
 ---
 
-**사용 예:**
+## 사용 예시
 
 ```bash
-# 토끼굴 탐험
-/rh "양자 컴퓨팅 실용화 시기?"
-
-# (충분히 팠다고 판단)
-# 중단 (Ctrl+C 또는 사용자 입력)
-
-# 결과 종합
+# 최신 세션 리포트
 /rh-report
+
+# 특정 세션 번호로 선택
+/rh-report 2
+
+# 세션 ID로 직접 선택
+/rh-report research_20260201_052524_현재_users_jaewoo
 ```

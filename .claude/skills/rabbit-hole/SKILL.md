@@ -26,7 +26,7 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 ```
 
 **3가지 원칙:**
-1. **흥미를 따라가세요** - 順序 말고 興미 순
+1. **흥미를 따라가세요** - 順序 말고 흥미 순
 2. **멈추지 마세요** - 사용자가 중단할 때까지
 3. **자유롭게** - 규칙은 가이드일 뿐, 직관을 믿으세요
 
@@ -35,9 +35,9 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 ## 🔄 사이클 (4단계)
 
 ```
-1. LOAD  - 상태 로드
+1. LOAD  - 상태 + 지식 컨텍스트 로드
 2. DIG   - 자유 탐색
-3. SAVE  - 상태 저장 + 출력
+3. SAVE  - 상태 저장 + 지식 업데이트 + 출력
 4. LOOP  - 다음으로
 ```
 
@@ -45,218 +45,402 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 
 ## 1. LOAD
 
-**현재 상태 확인:**
+### 1.1 세션 관리
 
-```bash
-cat .research/state.json 2>/dev/null || echo '{"iteration":{"current":0}}'
-cat .research/curiosity_queue.json 2>/dev/null || echo '{"holes":[]}'
-cat .research/info_hubs.json 2>/dev/null || echo '{"hubs":[]}'
+```python
+from .research.session_manager import SessionManager
+import json
+
+sm = SessionManager()
+
+if "$ARGUMENTS" != "":
+    # 새 질문 제공됨
+    question = "$ARGUMENTS"
+    existing_sessions = sm.list_sessions()
+
+    # 유사 세션 체크 후 새 세션 생성 또는 이어하기
+    session_id = sm.create_session(question)
+
+    # 초기 구멍 생성 (Extended Thinking으로 질문 분해)
+    # goal 필드: 이 hole에서 알고 싶은 것 (이해도 평가 기준)
+    initial_holes = [
+        {
+            "id": "hole_1",
+            "topic": "aspect_1",
+            "goal": "이 관점에서 핵심 원리와 적용 방법 파악",  # 필수!
+            "interest": 0.85,
+            "knowledge_type": "prior"
+        },
+        {
+            "id": "hole_2",
+            "topic": "aspect_2",
+            "goal": "구체적인 구현 방법과 trade-off 이해",
+            "interest": 0.80,
+            "knowledge_type": "prior"
+        },
+    ]
+else:
+    # 이어하기
+    current = sm.get_current_session()
+    session_id = current["id"]
+
+# 세션 디렉토리
+session_path = sm.get_session_path(session_id)
 ```
 
-**첫 실행 시:**
+### 1.2 Knowledge Context 로드 (핵심!)
+
+**세 가지를 로드 (모두 세션 디렉토리 내):**
+1. **Global Knowledge** - `{session_path}/current_knowledge.md` (전체 연구 흐름)
+2. **Parent Knowledge** - 현재 hole의 parent 보고서 (상위 맥락)
+3. **Current Knowledge** - 현재 hole의 기존 보고서 (이전 탐색 기록)
+
 ```python
-# 초기 질문 분해
-question = "$ARGUMENTS"
+# ═══════════════════════════════════════════════════════════════
+# 🌐 1. Global Knowledge 로드 (세션 내)
+# ═══════════════════════════════════════════════════════════════
+global_knowledge = read(f"{session_path}/current_knowledge.md")
+print(global_knowledge)  # 50줄 이내, 항상 출력
 
-# 여러 초기 구멍 생성 (Extended Thinking)
-initial_holes = [
-    {"topic": "aspect_1", "interest": 0.85, "depth": 0},
-    {"topic": "aspect_2", "interest": 0.80, "depth": 0},
-    {"topic": "aspect_3", "interest": 0.75, "depth": 0}
-]
+# ═══════════════════════════════════════════════════════════════
+# 🔍 2. 현재 hole 선택
+# ═══════════════════════════════════════════════════════════════
+queue = json.load(open(f"{session_path}/curiosity_queue.json"))
+holes_dict = {h["id"]: h for h in queue["holes"]}
 
-# curiosity_queue.json에 저장
+current_hole = select_most_interesting(queue["holes"])  # pending 중 흥미 높은 것
+
+# ═══════════════════════════════════════════════════════════════
+# 📌 3. Parent Knowledge 로드 (있으면)
+# ═══════════════════════════════════════════════════════════════
+if current_hole.get("parent"):
+    parent_id = current_hole["parent"]
+    parent_hole = holes_dict[parent_id]
+    parent_report_path = f"{session_path}/holes/{parent_id}_{slugify(parent_hole['topic'])}.md"
+
+    if exists(parent_report_path):
+        parent_report = read(parent_report_path)
+        print(f"\n📌 Parent Knowledge: {parent_hole['topic']}")
+        print(parent_report[:800])  # 앞부분만
+
+# ═══════════════════════════════════════════════════════════════
+# 📝 4. Current Hole Knowledge 로드 (있으면 - 재탐색 시)
+# ═══════════════════════════════════════════════════════════════
+current_report_path = f"{session_path}/holes/{current_hole['id']}_{slugify(current_hole['topic'])}.md"
+
+if exists(current_report_path):
+    current_report = read(current_report_path)
+    print(f"\n📝 이전 탐색 기록: {current_hole['topic']} (depth {current_hole['depth']})")
+    print(current_report)  # 전체 로드 (자기 보고서)
 ```
 
-**이어서 실행 시:**
-```python
-# 기존 큐 로드
-holes = load_queue()
-current_hole = select_most_interesting(holes)  # 興미 높은 것
+### 1.3 출력 예시
+
+**처음 탐색하는 hole:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 Current Knowledge
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 연구: rabbit-hole 성능 향상 방법?
+## 핵심 발견
+- LLMLingua-2: 3-6x 빠른 압축 (BERT 기반)
+...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 Parent: hole_6 "LLMLingua"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MS Research의 프롬프트 압축 기법...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🕳️ 현재: hole_11 "LLMLingua-2" (depth 0, 첫 탐색)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**재탐색하는 hole (depth > 0):**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 Current Knowledge
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[global knowledge]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 Parent: hole_6 "LLMLingua"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[parent 보고서 앞부분]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 이전 탐색 기록: hole_11 (depth 1)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LLMLingua-2
+
+## [Iter 2] 탐색
+**쿼리:** "LLMLingua-2 implementation"
+**발견:** token classification 방식
+**아직 모름:** 구체적 API 사용법
+**이해도:** 0.5
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🕳️ 현재: hole_11 계속 탐색 (depth 1 → 2)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ---
 
 ## 2. DIG (핵심!)
 
-**철학: 자유롭게 탐색하되, 출처는 꼭 확보**
+**철학: 자유롭게 탐색하되, 기존 지식과 비교하며**
 
-### 구멍 선택 (직관)
+### 2.1 구멍 선택 (직관)
 
 Extended Thinking으로 가장 끌리는 구멍 선택:
 ```
 큐:
-- hole_4 "Majorana" (興미: 0.90, depth: 0)
-- hole_7 "Kitaev" (興미: 0.80, depth: 0)
-- hole_2 "비용" (興미: 0.65, depth: 1)
+- hole_11 "LLMLingua-2" (흥미: 0.93, depth: 0)
+- hole_18 "UCB 공식" (흥미: 0.93, depth: 0)
+- hole_7 "Claude API" (흥미: 0.92, depth: 0)
 
-직관: "Majorana가 가장 흥미로워!"
-→ hole_4 선택
+직관: "LLMLingua-2가 가장 실용적!"
+→ hole_11 선택
 ```
 
-### 탐색 프로세스 (자유롭게)
+### 2.2 탐색 프로세스
 
 ```
 1. 쿼리 생성 (Extended Thinking)
-   - 어떻게 팔까?
-   - 여러 각도 시도 (이론, 실험, 응용, 비교...)
-   - 발산 도구: 제1원칙, SCAMPER, Matrix of Thought, TRIZ
-   - 3-5개 쿼리 생성
+   - current_knowledge.md 참조하여 "이미 아는 것" 확인
+   - 아직 모르는 것 위주로 쿼리 생성
+   - 3-5개 쿼리
 
 2. 검색 전략 (depth 기반)
-
-   depth 0-1 (발산 모드):
-   - 일반 검색만
-   - 목표: 새로운 구멍 발견
-
-   depth 2+ (수렴 모드):
-   - 일반 30% + 허브 한정 70%
-   - 목표: 깊은 이해, 검증
+   depth 0-1 (발산): 넓게 탐색, 새 구멍 발견
+   depth 2+ (수렴): 구체적 쿼리, 깊은 이해, 검증 중심
 
 3. 병렬 검색
    WebSearch(q1)  # 병렬
    WebSearch(q2)  # 병렬
    WebSearch(q3)  # 병렬
 
-4. 발견 & 검증
-   - 검색 결과 읽으며 새 개념 발견
-   - 興미 판단 (직관 + 가이드)
+4. 발견 & 분류
+   - 검색 결과를 current_knowledge.md와 비교
+   - 이미 아는 것 → knowledge_type: "refined"
+   - 새로운 것 → knowledge_type: "new"
    - 출처 확인 (필수!)
-   - 교차 검증 (3개 소스 권장)
 
 5. 이해 구축
    - 정보 종합
-   - 수렴 도구: 오컴의 면도날, 베이지안, 반증 가능성, 변증법
+   - parent 보고서 및 이전 탐색 기록과 연결
    - 간단명료하게
 
-6. 판단
-   - 더 팔까? (depth++)
-   - 다른 구멍으로? (pivot)
+6. 이해도 평가 & 판단
+   hole.goal 대비 달성도 평가:
+
+   """
+   goal: "구체적 구현 방법과 API 사용법 파악"
+
+   평가:
+   - 구현 방법: ✓ PromptCompressor 클래스 발견
+   - API 사용법: ✗ 아직 모름
+   → understanding = 0.5
+   """
+
+   if understanding >= 0.7:
+       status = "explored"  # goal 대부분 달성!
+       → 다음 hole로 이동
+   else:
+       depth += 1
+       status = "pending"   # 유지
+       → 보고서에 "아직 모름: [goal 중 미달성 부분]" 기록
+       → 같은 hole 다시 선택될 수 있음
 ```
 
-### depth 기반 검색 (예시)
+### 2.3 새 구멍 발견 (흥미 판단)
 
-```python
-# 관련 허브 조회
-hubs = get_hubs_for_topic(hole.topic)  # info_hubs.json
-hub_domains = [h.domain for h in hubs[:3]]
-
-if hole.depth <= 1:
-    # 발산: 넓게 탐색
-    WebSearch("Majorana fermion what is")
-    WebSearch("Majorana vs Dirac")
-    WebSearch("Majorana experiment")
-else:
-    # 수렴: 깊게 파기
-    WebSearch("Majorana braiding")  # 일반 (30%)
-    WebSearch("Majorana topological",
-              allowed_domains=hub_domains)  # 허브 (70%)
-    WebSearch("Majorana qubit error",
-              allowed_domains=hub_domains)
+**흥미 공식:**
 ```
+흥미 = 근본성(0.3) + 연결성(0.3) + 신선도(0.25) + 구체성(0.15)
 
-### 새 구멍 발견 (興미 판단)
-
-**직관 + 간단한 가이드:**
-
+- 근본성: 기초/원리인가
+- 연결성: 원래 질문과 연결되는가
+- 신선도: current_knowledge.md에 없는 것인가
+- 구체성: 데이터/실험이 있는가
 ```
-발견: "Kitaev chain model"
-
-Extended Thinking:
-- 얼마나 근본적? (높음/중간/낮음)
-- 원래 질문과 연결? (직결/연관/간접)
-- 새로운 개념? (완전/들어봤음/아는것)
-- 구체적? (데이터/방법론/추상)
-
-직관: "Majorana의 기초 모델이네! 흥미롭다!"
-→ 興미: 0.80 (높음)
-→ 0.80 > 0.70 → 큐 추가!
-```
-
-**임계값: 0.70** (이하는 무시)
-
-### 출처 검증 (필수!)
 
 **규칙:**
+- 유사도 > 0.7 → 새 hole 안 만듦 (병합)
+- 흥미 > 0.70 → 새 hole 생성
+- 모순 발견 시 +0.2 보너스
+
+### 2.4 지식 분류 (knowledge_type)
+
+**current_knowledge.md와 비교하여 판단:**
+
+| 상황 | knowledge_type |
+|------|----------------|
+| initial_decomposition, 사용자 입력 | `"prior"` |
+| current_knowledge.md에 없는 새 개념 | `"new"` |
+| 이미 아는 것의 세부사항/정정 | `"refined"` |
+
+```
+예시:
+발견: "LLMLingua uses BERT for token classification"
+
+current_knowledge.md 확인:
+"- LLMLingua-2: 3-6x 빠른 프롬프트 압축 (BERT 기반)"
+
+판단: BERT 기반이라는 건 이미 앎, token classification은 세부사항
+→ knowledge_type: "refined"
+```
+
+### 2.5 출처 검증 (필수!)
+
 ```
 1. 모든 사실적 주장 → 출처 필수
-   - ✅ "GPT-4는 2023년 3월 출시 (openai.com)"
-   - ❌ "GPT-4는 2023년 3월 출시" ← 출처 없으면 안 씀!
+   ✅ "LLMLingua-2는 ACL'24 발표 (arxiv.org)"
+   ❌ "LLMLingua-2는 좋다" ← 출처 없음!
 
-2. 교차 검증 (권장)
-   - 1개 소스: 신뢰도 0.6 (낮음)
-   - 2개 소스: 신뢰도 0.8 (중간)
-   - 3개+ 소스: 신뢰도 0.95 (높음)
-
-3. 태그
-   - ✓✓ VERIFIED (3개+ 소스)
-   - ✓ HIGH (1-2개 소스)
-   - ? UNCERTAIN (출처 없음 → 쓰지 마!)
-```
-
-**출처별 신뢰도:**
-- Peer-reviewed (Nature, Science): 0.9
-- 공식 발표: 0.85
-- Preprint (arXiv): 0.75
-- 전문 뉴스: 0.7
-- 블로그: 0.5
-
-### 허브 발견 & 관리
-
-**검색 중 고품질 소스 발견 시:**
-```python
-# 허브 후보 판단 (Extended Thinking)
-if domain이 전문적이고 유용하면:
-    # info_hubs.json에 추가
-    {
-        "domain": "arxiv.org",
-        "category": "academic",
-        "quality_score": 0.90,
-        "notes": "물리학, CS 논문"
-    }
+2. 태그
+   ✓✓ VERIFIED (3개+ 소스)
+   ✓ HIGH (1-2개 소스)
+   ? UNCERTAIN (쓰지 마!)
 ```
 
 ---
 
 ## 3. SAVE
 
+### 3.1 상태 저장
+
 ```python
-# 구멍 상태 업데이트
-update_hole(
-    hole_id=selected_hole.id,
-    depth=selected_hole.depth + 1,
-    status="explored",
-    understanding=0.75
+# 1. 이해도 평가 (goal 대비 달성도)
+"""
+Extended Thinking으로 평가:
+
+hole.goal = "구체적 구현 방법과 API 사용법 파악"
+
+체크리스트:
+□ 구현 방법 이해? → ✓ (PromptCompressor)
+□ API 사용법 이해? → ✗ (아직 모름)
+
+달성: 1/2 = 0.5
+"""
+understanding = evaluate_goal_completion(current_hole.goal, findings)
+
+# 2. 구멍 상태 업데이트
+if understanding >= 0.7:
+    # goal 대부분 달성 → 끝!
+    update_hole(
+        hole_id=current_hole.id,
+        depth=current_hole.depth + 1,
+        status="explored",
+        understanding=understanding
+    )
+else:
+    # goal 미달성 → 계속 파야 함
+    update_hole(
+        hole_id=current_hole.id,
+        depth=current_hole.depth + 1,
+        status="pending",  # 유지!
+        understanding=understanding
+    )
+    # 보고서에 "아직 모름: [미달성 goal 항목]" 기록
+
+# 3. 새 구멍 or 병합
+for discovery in discoveries:
+    if discovery.similarity > 0.7:
+        merge_into_hole(discovery, most_similar_hole)
+    else:
+        create_new_hole(discovery)
+
+# 4. 파일 저장
+save(f"{session_path}/curiosity_queue.json", queue)
+save(f"{session_path}/state.json", state)
+```
+
+### 3.2 Hole 보고서 저장
+
+```python
+# .research/holes/{hole_id}_{topic_slug}.md
+report_path = f".research/holes/{current_hole.id}_{slugify(current_hole.topic)}.md"
+write(report_path, hole_report)
+```
+
+### 3.3 current_knowledge.md 업데이트 (핵심!)
+
+**매 iteration 끝에 갱신:**
+
+```python
+"""
+Extended Thinking으로:
+
+1. 이번 iteration에서 새로 알게 된 것
+   → "핵심 발견"에 추가 (중요하면)
+
+2. 기존 내용과 충돌/반증
+   → "수정/반증된 것"으로 이동, 기존 삭제
+
+3. 50줄 제한 유지 (아래 우선순위로 관리)
+
+4. 파일 덮어쓰기
+"""
+
+update_current_knowledge(
+    new_findings=this_iteration_findings,
+    contradictions=found_contradictions,
+    max_lines=50
 )
+```
 
-# 큐 저장
-save_queue()  # curiosity_queue.json
+**50줄 유지 규칙:**
 
-# 허브 저장
-save_hubs()  # info_hubs.json
+```
+섹션 우선순위 (높을수록 유지):
 
-# state.json 업데이트
-state["iteration"]["current"] += 1
+1. 핵심 발견 (절대 삭제 안 함)
+   - 단, 오래되고 덜 중요한 것은 한 줄로 압축
+   - 예: "LLMLingua-2: BERT 기반 3-6x 빠른 압축" (세부사항 생략)
 
-# 진행 상황 출력
-print(f"""
+2. 열린 질문
+   - 해결된 질문 → 삭제
+   - 새 질문 → 추가
+
+3. 탐구 축 테이블
+   - explored 완료된 축은 한 줄 요약으로
+   - pending 축은 유지
+
+4. 수정/반증된 것
+   - 최근 3개만 유지
+   - 오래된 것 삭제
+
+압축 예시:
+Before (3줄):
+- LLMLingua-2: 3-6x 빠른 프롬프트 압축
+- BERT 기반 토큰 분류 방식
+- pip install llmlingua로 설치 가능
+
+After (1줄):
+- LLMLingua-2: BERT 기반 3-6x 압축 (pip install llmlingua)
+```
+
+### 3.4 진행 상황 출력
+
+```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🐰 Rabbit Hole #{state['iteration']['current']}
+🐰 Rabbit Hole #{iteration}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🕳️ 탐험: "{selected_hole.topic}"
+🕳️ 탐험: "{current_hole.topic}"
 
 💡 발견:
-  - "new_hole_1" (興미 0.85)
-  - "new_hole_2" (興미 0.75)
+  - "new_concept_1" [new] (흥미 0.85)
+  - "detail_of_X" [refined]
 
 ✓✓ 검증:
   - 핵심 사실 1 (3개 소스)
-  - 핵심 사실 2 (2개 소스)
 
-📊 큐: {len(queue)}개 구멍 대기
+📝 current_knowledge.md 업데이트됨
+
+📊 큐: {pending_count}개 대기
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""")
 ```
 
 ---
@@ -264,9 +448,7 @@ print(f"""
 ## 4. LOOP
 
 ```python
-# 종료 조건 체크
-if state["status"] == "running" and iteration < max_iter:
-    # 다음 구멍으로!
+if status == "running" and pending_holes_exist:
     Skill(skill="rabbit-hole", args="")
 else:
     print("🐰 탐험 종료!")
@@ -274,14 +456,31 @@ else:
 
 **종료 조건:**
 - status == "stopped_by_user"
-- iteration >= max_iterations
 - curiosity_queue 비었음
-
-**그 외: 계속!**
 
 ---
 
 ## 📋 데이터 구조
+
+### 파일 구조
+
+**모든 파일은 세션 디렉토리 내에 위치:**
+
+```
+.research/
+├── sessions/
+│   ├── index.json                 # 세션 목록
+│   └── research_YYYYMMDD_HHMMSS_{slug}/   # 세션 디렉토리
+│       ├── current_knowledge.md   # 🌐 Global (50줄)
+│       ├── curiosity_queue.json   # hole 목록
+│       ├── holes/                 # 구멍별 보고서
+│       │   ├── hole_1_컨텍스트최적화.md
+│       │   └── hole_6_LLMLingua.md
+│       └── state.json             # 세션 상태
+└── current -> sessions/research_XXX/  # symlink (현재 세션)
+```
+
+**핵심:** 세션별로 완전 분리 → 여러 연구 동시 진행 가능, 충돌 없음
 
 ### curiosity_queue.json
 
@@ -289,144 +488,127 @@ else:
 {
   "holes": [
     {
-      "id": "hole_1",
-      "topic": "Majorana fermion",
-      "interest": 0.90,
-      "depth": 0,
-      "parent": null,
-      "status": "pending",
-      "source": "initial_question"
-    },
-    {
-      "id": "hole_2",
-      "topic": "Kitaev chain",
-      "interest": 0.80,
-      "depth": 0,
+      "id": "hole_6",
+      "topic": "LLMLingua",
+      "goal": "압축 원리와 실제 적용 방법 파악",
+      "keywords": ["압축", "프롬프트", "LLMLingua"],
+      "interest": 0.95,
+      "depth": 1,
       "parent": "hole_1",
-      "status": "pending",
-      "source": "search_result_3"
+      "status": "explored",
+      "source": "websearch",
+      "knowledge_type": "new",
+      "discovered_at": 1,
+      "understanding": 0.90
     }
   ]
 }
 ```
 
-### info_hubs.json
+**필수 필드:**
+- `goal`: 이 hole에서 알고 싶은 것 (이해도 평가 기준)
+- `parent`: 이 hole을 발견한 상위 hole (root면 null)
 
-```json
-{
-  "hubs": [
-    {
-      "id": "hub_1",
-      "domain": "arxiv.org",
-      "name": "arXiv",
-      "category": "academic",
-      "quality_score": 0.95,
-      "hit_count": 12,
-      "notes": "물리학, CS, 수학 논문"
-    }
-  ],
-  "category_index": {
-    "academic": ["hub_1", "hub_2"],
-    "tech": ["hub_3"]
-  }
-}
+### current_knowledge.md (50줄 제한)
+
+```markdown
+# 연구: [질문]
+
+## 핵심 발견
+- [카테고리별 핵심 발견들]
+
+## 탐구 축
+| 축 | 핵심 hole | 인사이트 |
+|---|----------|---------|
+| ... | ... | ... |
+
+## 열린 질문
+- [아직 답을 모르는 것들]
+
+## 수정/반증된 것
+- [기존 믿음이 틀렸던 것]
+
+---
+*iteration N 기준*
+```
+
+### Hole 보고서 형식
+
+```markdown
+# {topic}
+
+## 메타
+- 흥미: 0.90 | 깊이: 2 | 상태: explored
+- 부모: [[hole_1]] | 타입: new
+
+## Goal
+{이 hole에서 알고 싶은 것}
+
+## 핵심 요약
+[이 hole에서 알게 된 것 요약]
+
+## 아직 모름 (status: pending일 때)
+- [goal 중 아직 해결 안 된 부분]
+- [다음 탐색에서 집중할 것]
+
+---
+
+## [Iter N] 탐색
+**쿼리:** "..."
+**발견:**
+- 💡 새 개념 → [[hole_X]] 생성
+- 📝 세부사항 (refined)
+**검증:** ✓✓ 사실 (출처1, 출처2)
+**이해도:** 0.5 (goal 달성: 구현방법 ✓, API사용법 ✗)
+
+---
+
+## 출처
+| 태그 | 소스 | URL |
+|------|------|-----|
+| ✓✓ | Nature | https://... |
 ```
 
 ---
 
 ## 💡 완전 예시
 
-```markdown
+```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🐰 Iteration 1
+🐰 Iteration 3
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## LOAD
-큐에서 선택: "Majorana fermion" (興미 0.90, depth 0)
+🌐 current_knowledge.md 로드 (전체 연구 흐름 확인)
+📌 Parent: hole_6 "LLMLingua" 보고서 로드
+🕳️ 현재: hole_11 "LLMLingua-2 구현" (흥미 0.93)
 
 ## DIG
 
-### 탐색 전략 (depth 0 → 발산 모드)
+### 검색 (current_knowledge 참조)
+이미 아는 것: "LLMLingua-2는 3-6x 빠름, BERT 기반"
+모르는 것: 구체적 구현 방법, API 사용법
 
-Extended Thinking:
-"Majorana가 뭐지? 여러 각도로 파보자"
-- 기본 개념: "what is"
-- 비교: "vs Dirac"
-- 실험: "experiment"
-- 응용: "quantum computing"
+WebSearch("LLMLingua-2 implementation guide")
+WebSearch("llmlingua pip install usage")
 
-### 검색 (병렬)
-WebSearch("Majorana fermion what is")
-WebSearch("Majorana vs Dirac fermion")
-WebSearch("Majorana zero modes experiment")
-WebSearch("Majorana topological quantum")
-
-### 발견
-
-검색 결과 1 (Nature):
-"Majorana fermions are quasi-particles...
- described by Kitaev chain model..."
-
-→ 💡 발견: "Kitaev chain model"
-   興미: 0.80 (근본적 모델!)
-   → 큐 추가!
-
-검색 결과 3 (arXiv):
-"Microsoft's topological qubit project..."
-
-→ 💡 발견: "Microsoft topological qubit"
-   興미: 0.85 (실용화 직결!)
-   → 큐 추가!
-
-→ 🏛️ 허브 발견: "arxiv.org" (고품질)
-   → info_hubs.json 추가!
+### 발견 & 분류
+1. "PromptCompressor class" - current_knowledge에 없음 → [new]
+2. "token classification approach" - 이미 BERT 기반 언급 → [refined]
 
 ### 검증
-
-주장: "Majorana는 토폴로지 큐비트 핵심"
-
-✓✓ VERIFIED (3개 소스):
-- Nature 논문
-- Science 논문
-- Microsoft 공식 블로그
-
-### 이해
-
-"Majorana = 자기 자신이 반입자인 준입자.
- Kitaev chain으로 모델링.
- 토폴로지 양자 컴퓨팅의 핵심 요소.
- Microsoft가 구현 시도 중."
-
-이해도: 75%
-
-### 판단
-
-더 팔까?
-- 기본 개념 이해 완료 ✓
-- 새 구멍 2개 발견 ✓
-- Microsoft 쪽이 더 흥미로운데? (0.85 > 0.80)
-
-→ Pivot to "Microsoft topological qubit"!
+✓✓ "pip install llmlingua" (GitHub, PyPI, MS Blog)
 
 ## SAVE
-
-큐 업데이트:
-- hole_1 "Majorana": explored (depth 1)
-- hole_2 "Kitaev chain": pending (新)
-- hole_3 "Microsoft qubit": pending (新)
+- hole_11: explored
+- current_knowledge.md 업데이트:
+  + "PromptCompressor 클래스로 즉시 사용 가능"
+- 새 hole 없음 (병합됨)
 
 ## LOOP
-
-다음: hole_3 "Microsoft qubit" (興미 0.85)
+다음: hole_18 "UCB 기반 흥미 공식" (흥미 0.93)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-
----
-
-## 인수 처리
-
-- 첫 실행: `$ARGUMENTS` = 연구 질문
-- 이후: state.json 사용 (args 무시)
 
 ---
 

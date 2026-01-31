@@ -49,17 +49,18 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 
 ```
 일반 검색:
-  "스타트업 펀딩 전략" → 블로그, 뉴스, 잡다한 결과
+  WebSearch("스타트업 펀딩 전략")
+  → 블로그, 뉴스, 잡다한 결과 섞임
 
 허브 활용 검색:
-  "site:ycombinator.com 펀딩 전략" → YC의 고급 인사이트
-  "a16z fundraising playbook" → 전문가 관점
+  WebSearch("펀딩 전략", allowed_domains=["ycombinator.com", "a16z.com"])
+  → YC, a16z의 고급 인사이트만 반환!
 ```
 
 **효과:**
 - ✅ 노이즈 감소 (저품질 정보 필터링)
 - ✅ 고급 정보 접근 (전문가/기관 관점)
-- ✅ 검색 효율 상승 (허브 키워드 + 실제 쿼리)
+- ✅ 검색 효율 상승 (allowed_domains로 허브 한정)
 
 ### 허브 리스트 관리
 
@@ -119,12 +120,13 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 ```python
 # 검색 시 허브 활용
 relevant_hubs = get_hubs_for_topic(current_hole.topic)
+hub_domains = [hub.domain for hub in relevant_hubs]
 
-for hub in relevant_hubs:
-    # 허브 키워드 + 실제 쿼리 조합
-    enhanced_query = f"site:{hub.domain} {original_query}"
-    # 또는
-    enhanced_query = f"{hub.name} {original_query}"
+# allowed_domains 파라미터로 허브 한정 검색
+WebSearch(
+    query=original_query,
+    allowed_domains=hub_domains  # 허브 도메인에서만 검색
+)
 ```
 
 **Update (품질 갱신):**
@@ -192,35 +194,34 @@ LLM 직관 믿기
 ## 🔄 사이클 (Rabbit Hole Loop)
 
 ```
-0. HUB_SCOUT - [첫 iteration만] 정보의 허브 탐색
 1. LOAD      - 상태 로드 (curiosity_queue + info_hubs)
 2. SELECT    - 가장 흥미로운 구멍 선택
-3. DIG       - 구멍 파기 (발산→검색→발견→수렴→검증) + 허브 발견
+3. DIG       - 구멍 파기 (자유로운 탐색 + 허브 발견)
 4. REFLECT   - 더 팔까? vs Pivot?
 5. SAVE      - 상태 저장 (큐 + 허브 리스트)
 6. OUTPUT    - 진행 상황 출력
 7. LOOP      - 다음 구멍으로 (Ralph Loop)
 ```
 
+**Note:** HUB_SCOUT는 선택적 (DIG 중에 자연스럽게 허브 발견)
+
 ---
 
-## 0. HUB_SCOUT (첫 iteration - 정보의 허브 탐색)
+## 0. HUB_SCOUT (선택적 - 정보의 허브 탐색)
 
-**첫 iteration에서만 실행됩니다.**
+**DIG 중에 자연스럽게 허브를 발견하는 것을 권장합니다.**
 
-### 목적
+이 단계는 선택적입니다. 굳이 미리 허브를 찾지 않아도, DIG 중에 좋은 출처를 발견하면 그때 info_hubs.json에 추가하면 됩니다.
 
-연구 주제와 관련된 **고품질 정보 허브**를 먼저 식별하여, 이후 검색의 효율을 높입니다.
-
-### 실행 조건
+### 선택적 실행
 
 ```python
-if state["iteration"]["current"] == 0:
-    # HUB_SCOUT 실행
+# Option A: 자연스러운 발견 (권장)
+# DIG 중에 좋은 출처 발견 → 즉시 허브 추가
+
+# Option B: 명시적 탐색 (선택)
+if user_wants_hub_scout or topic_completely_new:
     execute_hub_scout()
-else:
-    # 스킵 → 바로 LOAD로
-    pass
 ```
 
 ### 프로세스
@@ -431,124 +432,171 @@ selected_hole = cm.select_most_interesting(
 
 ## 3. DIG (구멍 파기) - 핵심 프로세스
 
-**작은 루프: 깊이 파기**
+**철학: 자유롭게 파되, 사고 도구는 필요할 때 참고**
 
 ```
-DIG:
-  ┌─────────────────────────────────────┐
-  │ 1. 발산 (여러 각도 시도)              │
-  │    📖 divergent_thinking.md          │
-  │    → 검색 쿼리 생성                  │
-  │                                      │
-  │ 2. 검색 (정보 수집)                  │
-  │    + 중복 제거                       │
-  │                                      │
-  │ 3. 발견 (새 구멍 찾기)                │
-  │    📖 curiosity_heuristics.md        │
-  │    → 興미 판단 → 큐 추가             │
-  │                                      │
-  │ 4. 수렴 (이 구멍 이해)                │
-  │    📖 convergent_thinking.md         │
-  │                                      │
-  │ 5. 검증 (사실 확인)                  │
-  │    📖 verify_4layers.md              │
-  │                                      │
-  │ 6. 반성 (더 팔까?)                   │
-  │    YES → depth++ → 1로 돌아가기 ────┘
-  │    NO  → REFLECT로
-  └─────────────────────────────────────┘
+DIG는 자유로운 탐색입니다:
+
+  🤔 Extended Thinking으로 판단:
+     "이 구멍을 어떻게 팔까?"
+     "어떤 각도가 흥미로울까?"
+     "뭘 검색해야 할까?"
+
+  🔍 검색하고, 발견하고, 이해하고, 검증
+
+  💡 막히면? → references/ 도구 참고
+     - divergent_thinking.md (여러 각도)
+     - convergent_thinking.md (이해 정리)
+     - verify_4layers.md (사실 확인)
+     - curiosity_heuristics.md (흥미 판단)
+
+  🔁 더 팔까? → YES: 계속 | NO: REFLECT로
 ```
 
-**상세:** `references/digging_process.md`
+**핵심 활동 (순서 자유):**
+- **검색 쿼리 생성** - 직관 + 사고 도구 (선택)
+- **정보 수집** - 병렬 검색, 허브 활용
+- **새 구멍 발견** - "오, 이것도!" 발견 → 큐 추가
+- **이해 구축** - 수집한 정보 종합
+- **사실 검증** - 출처 확인, 모순 체크
+- **깊이 판단** - 더? Pivot?
 
-### 3-1. 발산 (여러 각도 시도)
+**상세 가이드:** `references/digging_process.md` (참고용)
+
+### 예시: 자연스러운 DIG
 
 ```markdown
 구멍: "Majorana 페르미온"
 depth: 0
 
-📖 references/divergent_thinking.md
-
 Extended Thinking:
-  제1원칙: Majorana = 입자? 준입자?
-  Matrix of Thought:
-    Path A: 이론 → "Majorana fermion theory"
-    Path B: 실험 → "Majorana experimental"
-    Path C: 응용 → "Majorana quantum computing"
+  "Majorana가 뭐지? 어떻게 파볼까?"
 
-  SCAMPER:
-    - Compare: "Majorana vs Dirac"
+  직관:
+  - 기본 개념부터 → "what is"
+  - 다른 것과 비교 → "vs Dirac"
+  - 실험 증거는? → "experiment"
+  - 응용은? → "quantum computing"
 
-→ 검색 쿼리:
+  (필요하면 divergent_thinking.md 참고 가능)
+
+→ 검색 쿼리 생성:
   q1: "Majorana fermion what is"
   q2: "Majorana vs Dirac fermion"
   q3: "Majorana zero modes experiment"
   q4: "Majorana topological quantum"
 
-중복 제거:
-  from deduplicate_search import is_duplicate_query
-  → 최종: [q1, q2, q3, q4]
+→ 중복 체크 후 병렬 검색
 ```
 
 ### 3-2. 검색 (정보 수집) + 허브 활용
 
-**허브 강화 검색 전략:**
+**depth 기반 검색 전략:**
+
+구멍의 depth에 따라 검색 전략이 달라집니다:
+
+```
+depth 낮음 (0~1): 발산 모드 → 일반 검색 위주 (새로운 발견)
+depth 높음 (2+):  수렴 모드 → 허브 한정 검색 위주 (깊은 이해)
+```
 
 ```python
 # 1. 관련 허브 조회
 relevant_hubs = hm.get_hubs_for_topic(current_hole.topic)
+hub_domains = [hub.domain for hub in relevant_hubs[:3]]
 
-# 2. 검색 쿼리 확장
-enhanced_queries = []
+# 2. depth에 따른 검색 전략 결정
+current_depth = selected_hole.depth
 
-for query in queries:
-    # 일반 검색
-    enhanced_queries.append(query)
+if current_depth <= 1:
+    # ═══════════════════════════════════════
+    # 발산 모드: 넓게 탐색, 새로운 구멍 발견
+    # ═══════════════════════════════════════
+    # 일반 검색 위주 (허브 한정 없음)
+    WebSearch(query=queries[0])  # 병렬
+    WebSearch(query=queries[1])  # 병렬
+    WebSearch(query=queries[2])  # 병렬
+    WebSearch(query=queries[3])  # 병렬
 
-    # 허브 강화 검색 (상위 2-3개 허브만)
-    for hub in relevant_hubs[:3]:
-        # site: 연산자 활용
-        enhanced_queries.append(f"site:{hub.domain} {query}")
-        # 또는 허브 이름 조합
-        enhanced_queries.append(f"{hub.name} {query}")
+else:
+    # ═══════════════════════════════════════
+    # 수렴 모드: 깊게 파기, 고품질 정보 수집
+    # ═══════════════════════════════════════
+    # 병렬로 일반 + 허브 한정 혼합
 
-# 3. 병렬 검색 (중복 제거 후)
-unique_queries = deduplicate_queries(enhanced_queries)
+    # 일반 검색 (30% - 혹시 모를 새 발견용)
+    WebSearch(query=queries[0])
 
-WebSearch(unique_queries[0])  # 병렬
-WebSearch(unique_queries[1])  # 병렬
-WebSearch(unique_queries[2])  # 병렬
-# ...
+    # 허브 한정 검색 (70% - 깊은 이해용)
+    WebSearch(
+        query=queries[1],
+        allowed_domains=hub_domains
+    )
+    WebSearch(
+        query=queries[2],
+        allowed_domains=hub_domains
+    )
+    WebSearch(
+        query=queries[3],
+        allowed_domains=hub_domains
+    )
+
+# 3. 결과 병합 및 중복 제거
+all_results = merge_and_deduplicate(results)
 
 # 4. 히스토리 저장
-for query, result in zip(unique_queries, results):
+for query, result in results:
     add_query_to_history(
         query_text=query,
         iteration=current_iteration,
         hole_id=selected_hole.id,
-        hub_used=extract_hub_from_query(query)  # 허브 사용 추적
+        search_mode="divergent" if current_depth <= 1 else "convergent"
     )
 ```
 
 **예시:**
 
 ```markdown
-원본 쿼리: "Majorana fermion experiment"
-
+구멍: "Majorana 페르미온"
 관련 허브: [arxiv.org, nature.com, science.org]
 
-확장된 검색:
-1. "Majorana fermion experiment" (일반)
-2. "site:arxiv.org Majorana fermion experiment" (허브 강화)
-3. "site:nature.com Majorana fermion experiment" (허브 강화)
-4. "Nature Majorana fermion experiment" (허브 이름 조합)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+depth: 0 (발산 모드)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+목표: 새로운 구멍 발견, 넓은 탐색
+
+검색 (모두 일반):
+  WebSearch("Majorana fermion what is")
+  WebSearch("Majorana vs Dirac")
+  WebSearch("Majorana experiment")
+  WebSearch("Majorana quantum computing")
+
+결과: 위키, 블로그, 논문, 뉴스 다양하게
+  → 새 구멍 발견: "Kitaev chain", "Microsoft qubit"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+depth: 2 (수렴 모드)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+목표: 깊은 이해, 검증, 고품질 정보
+
+검색 (일반 1개 + 허브 한정 3개):
+  WebSearch("Majorana braiding operations")  # 일반
+  WebSearch("Majorana topological protection",
+            allowed_domains=["arxiv.org", "nature.com"])
+  WebSearch("Majorana qubit error rate",
+            allowed_domains=["arxiv.org", "nature.com"])
+  WebSearch("Majorana experimental verification",
+            allowed_domains=["arxiv.org", "nature.com"])
+
+결과: peer-reviewed 논문 위주
+  → 깊은 이해: 구체적 메커니즘, 수치, 검증
 ```
 
-### 3-3. 발견 (새 구멍 찾기)
+### 활동: 새 구멍 발견
 
 ```markdown
-📖 references/curiosity_heuristics.md
-
 검색 결과 분석:
 
 Result 1 (Nature):
@@ -556,42 +604,30 @@ Result 1 (Nature):
 
   💡 발견: "Kitaev chain"
 
-  興미 판단:
-  - 근본성: +0.2 (Majorana의 기초 모델)
-  - 연결성: +0.2 (원래 구멍과 연관)
-  - 신선도: +0.3 (새로운 개념)
-  - 구체성: +0.1 (이론적)
-  → 興미: 0.80
+  Extended Thinking:
+    "Kitaev chain이 뭐지?"
+    "Majorana의 기초 모델이라고?"
+    "이거 흥미로운데! 근본적인 것 같아"
 
-  임계값: 0.80 > 0.70 ✓
-  → 큐 추가!
+    직관적 興미: 0.80
+    → 높음! 큐에 추가하자
+
+  (참고: curiosity_heuristics.md에 판단 가이드 있음)
 
 Result 2 (Microsoft):
   "...topological qubit based on Majorana..."
 
   💡 발견: "Microsoft topological qubit"
 
-  興미 판단:
-  - 근본성: +0.1 (응용)
-  - 연결성: +0.3 (실용화 직결!)
-  - 신선도: +0.2 (알려진 주제)
-  - 구체성: +0.3 (구체적 구현)
-  → 興미: 0.90
+  Extended Thinking:
+    "Microsoft가 이걸로 큐비트를 만든다고?"
+    "실용화와 직결되는구나!"
+    "이거 엄청 흥미롭다!"
 
-  임계값: 0.90 > 0.70 ✓
-  → 큐 추가!
+    직관적 興미: 0.90
+    → 매우 높음! 우선순위 ↑
 
-cm.add_hole(
-    topic="Kitaev chain model",
-    interest=0.80,
-    parent=selected_hole.id
-)
-
-cm.add_hole(
-    topic="Microsoft topological qubit",
-    interest=0.90,
-    parent=selected_hole.id
-)
+→ 두 구멍 모두 큐 추가
 ```
 
 ### 3-3b. 허브 발견 (새 정보 허브 식별)
@@ -648,82 +684,67 @@ for result in search_results:
             print(f"⚠️ 허브 품질 저하: {hub.name}")
 ```
 
-### 3-4. 수렴 (이 구멍 이해)
+### 활동: 이해 구축
 
 ```markdown
-📖 references/convergent_thinking.md
+검색한 정보들을 종합:
 
-정보 종합:
-- Majorana = 자기 자신 = 반입자
-- Kitaev chain으로 모델링
-- 토폴로지 큐비트에 사용
-- Microsoft가 구현 중
+Extended Thinking:
+  "Majorana가 뭔지 이제 알겠다"
 
-오컴의 면도날:
-  단순 설명: "자기 자신이 반입자인 특수 입자"
-  → 채택
+  핵심:
+  - 자기 자신 = 반입자인 특수 입자
+  - Kitaev chain으로 모델링됨
+  - 토폴로지 큐비트의 핵심 요소
+  - Microsoft가 실제로 구현 시도 중
 
-베이지안 업데이트:
-  사전: 0.0 (몰랐음)
-  증거 후: 0.75
-  → "Majorana가 토폴로지 큐비트 핵심"
+  단순하게 정리하면:
+  "Majorana는 토폴로지 양자 컴퓨팅의 핵심"
 
-핵심 이해:
-  "Majorana는 토폴로지 양자 컴퓨팅의 핵심 요소"
+  (막히면 convergent_thinking.md 참고)
+
+이해도: 75% 정도
 ```
 
-### 3-5. 검증 (사실 확인)
+### 활동: 사실 검증
 
 ```markdown
-📖 references/verify_4layers.md
-
 주장: "Majorana는 토폴로지 큐비트 핵심"
 
-Layer 1: Source Grounding
-  ✓ 출처 3개:
-  - Nature (peer-reviewed)
-  - Science (peer-reviewed)
-  - Microsoft 블로그 (공식)
+출처 확인:
+  ✓ Nature (peer-reviewed)
+  ✓ Science (peer-reviewed)
+  ✓ Microsoft 블로그 (공식)
 
-Layer 2: Cross-Validation
-  3개 독립 소스 일치
-  → 신뢰도: 0.95
+Extended Thinking:
+  "3개 독립 소스가 일치하네"
+  "신뢰할 만하다"
 
-Layer 3: Self-Consistency
-  역방향 검증 OK
+신뢰도: ✓✓ VERIFIED (0.95)
 
-Layer 4: Confidence Tagging
-  → ✓✓ VERIFIED
+(참고: verify_4layers.md에 검증 가이드)
 ```
 
-### 3-6. 반성 (더 팔까?)
+### 활동: 깊이 판단
 
 ```markdown
 Extended Thinking:
 
-현재 구멍: "Majorana 페르미온"
-depth: 0 → 1 (1차 파기 완료)
-이해도: 75%
+"Majorana 구멍, 계속 팔까?"
 
-질문:
-1. 더 팔 가치?
-   - 기본 개념 이해 ✓
-   - Kitaev, Microsoft 발견 ✓
-   - 더 파면 이론만 깊어짐
+현재 상황:
+  - depth: 1 (1차 파기 완료)
+  - 이해도: 75% (기본은 이해함)
+  - 새 발견: Kitaev (0.80), Microsoft (0.90)
 
-2. 새 발견이 더 흥미로운가?
-   - hole_7 "Kitaev" (興미 0.80)
-   - hole_8 "Microsoft" (興미 0.90) ← 더 높음!
+직관:
+  "기본 개념은 이해했어"
+  "더 파면 너무 이론적일 것 같은데?"
+  "Microsoft qubit이 더 흥미로운데!"
 
-판단:
-  ❌ 더 파기: 기본은 충분
-  ✅ Pivot: "Microsoft qubit"으로
+판단: ❌ 더 파기, ✅ Pivot
 
-  이유:
-  - 실용화와 직결
-  - 더 흥미로움 (0.90 > 0.75)
-
-→ REFLECT로 (pivot 확정)
+다음: "Microsoft qubit" 파러 가자!
 ```
 
 ---
@@ -852,19 +873,22 @@ else:
 
 ---
 
-## 📖 참조 문서
+## 📖 참조 문서 (필요할 때 참고)
 
-### 사고 도구 (재사용)
+**사고 도구는 가이드일 뿐, 강제가 아닙니다.**
+Extended Thinking으로 직관적으로 판단하되, 막히면 아래 도구를 참고하세요.
 
-- **references/divergent_thinking.md** - 발산 (여러 각도)
-- **references/convergent_thinking.md** - 수렴 (이해 정리)
-- **references/verify_4layers.md** - 검증 (사실 확인)
+### 사고 도구
 
-### 토끼굴 전용
+- **references/divergent_thinking.md** - 막혔을 때 여러 각도 시도
+- **references/convergent_thinking.md** - 정보 정리가 필요할 때
+- **references/verify_4layers.md** - 사실 확인이 필요할 때
+- **references/curiosity_heuristics.md** - 興미 판단 기준 참고
 
-- **references/curiosity_heuristics.md** - 흥미도 판단
-- **references/digging_process.md** - 파기 상세 프로세스
-- **references/hub_management.md** - 정보 허브 관리 전략
+### 프로세스 가이드
+
+- **references/digging_process.md** - DIG 상세 가이드 (참고용)
+- **references/hub_management.md** - 허브 관리 전략
 
 ---
 

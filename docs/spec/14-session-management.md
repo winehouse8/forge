@@ -3,7 +3,8 @@
 **문서:** 14-session-management.md
 **최종 수정일:** 2026-02-01
 **수정자:** Claude Sonnet 4.5
-**관련 파일:** `.research/session_manager.py`, `.claude/skills/deep-research/SKILL.md`
+**관련 파일:** `.research/session_manager.py`, `.research/session_matcher.py`, `.claude/skills/deep-research/SKILL.md`
+**핵심 혁신:** LLM 직접 판단 (임베딩 불필요)
 
 ---
 
@@ -92,40 +93,54 @@
 
 ## 자동 세션 감지
 
-### 1. 유사도 계산 (Embedding 기반)
+### 1. LLM 직접 판단 (Embedding 불필요)
+
+**핵심 아이디어:** "왜 임베딩을 쓰나? Claude가 있는데!"
 
 ```python
 from session_manager import SessionManager
+from session_matcher import create_similarity_prompt
 
 sm = SessionManager()
 
-# 새 질문과 기존 세션 비교
-similar_sessions, match_type = sm.find_similar_sessions("양자 컴퓨팅 최신 동향")
+# 기존 세션 목록 포맷팅
+sessions_text = sm.format_sessions_for_display()
 
-# match_type:
-# - "exact": >0.95 유사도 (거의 동일)
-# - "similar": >0.8 유사도 (유사함)
-# - "none": <0.8 (다름)
+# Claude에게 보여줄 프롬프트 생성
+prompt = create_similarity_prompt("양자 컴퓨팅 최신 동향", sessions)
+
+# Claude가 Extended Thinking으로 유사도 판단
+# → SKILL.md의 LOAD 단계에서 자동 실행
 ```
+
+**장점:**
+- ✅ 외부 API 불필요 (OpenAI 없어도 됨)
+- ✅ 임베딩 계산 없음
+- ✅ Claude의 언어 이해 능력 직접 활용
+- ✅ 코드 단순화, 비용 절감
 
 ### 2. 유사도 기준
 
-| 유사도 | 판정 | 동작 |
-|--------|------|------|
-| **>0.95** | 거의 동일 (exact) | "계속하기" vs "새로 시작" 선택 |
-| **0.8~0.95** | 유사 (similar) | 유사 세션 목록 표시 → 선택 |
-| **<0.8** | 다름 (none) | 자동으로 새 세션 생성 |
+Claude가 다음 기준으로 판단:
+
+| 판정 | 설명 | 동작 |
+|------|------|------|
+| **"exact"** | 같은 주제, 같은 질문 의도 | "계속하기" vs "새로 시작" 선택 |
+| **"similar"** | 관련있지만 다른 각도 | 유사 세션 목록 표시 → 선택 |
+| **"none"** | 완전히 다른 주제 | 자동으로 새 세션 생성 |
 
 ### 3. 의사결정 플로우
 
 ```
 질문 입력
     ↓
-유사 세션 검색
+Claude에게 세션 목록 + 새 질문 제시
+    ↓
+Claude가 Extended Thinking으로 유사도 판단
     ↓
 ┌───────────┬───────────┬───────────┐
 │ Exact     │ Similar   │ None      │
-│ (>0.95)   │ (0.8~0.95)│ (<0.8)    │
+│ (동일)    │ (유사)    │ (다름)    │
 └───────────┴───────────┴───────────┘
     ↓             ↓            ↓
 단일 선택    목록 선택    자동 생성
@@ -261,14 +276,9 @@ from session_manager import SessionManager
 
 sm = SessionManager()
 
-# 1. 유사 세션 검색
-similar_sessions, match_type = sm.find_similar_sessions("양자 컴퓨팅")
-# Returns:
-#   similar_sessions = [
-#       {"id": "...", "question": "...", "similarity": 0.92, "iteration": 10},
-#       ...
-#   ]
-#   match_type = "exact" | "similar" | "none"
+# 1. 세션 목록 포맷팅 (Claude에게 보여주기 위해)
+sessions_text = sm.format_sessions_for_display()
+# Returns: "1. \"양자 컴퓨팅\"\n   상태: running | Iteration: 10\n..."
 
 # 2. 세션 생성
 session_id = sm.create_session("양자 컴퓨팅 최신 동향", auto_switch=True)
@@ -285,6 +295,27 @@ sessions = sm.list_sessions()
 
 # 6. 세션 상태 업데이트
 sm.update_session_status(session_id, status="running", iteration=5)
+```
+
+### SessionMatcher (LLM 판단)
+
+```python
+from session_matcher import create_similarity_prompt, parse_claude_response
+
+# 1. 유사도 판단 프롬프트 생성
+prompt = create_similarity_prompt("양자 컴퓨팅", sessions)
+
+# 2. Claude가 판단 (SKILL.md에서 자동 실행)
+# Extended Thinking으로 유사도 분석
+
+# 3. Claude 응답 파싱
+judgment = parse_claude_response(claude_response)
+# Returns:
+# {
+#   "match_type": "exact" | "similar" | "none",
+#   "matched_sessions": [1, 2, ...],
+#   "reasoning": "판단 근거"
+# }
 ```
 
 ### 세션 ID 생성 규칙
@@ -312,32 +343,40 @@ sm.update_session_status(session_id, status="running", iteration=5)
 
 ## 성능 최적화
 
-### Embedding 캐싱
+### LLM 판단 최적화
 
-**문제:** 매번 embedding 계산 비용 높음
+**기존 계획:** Embedding API 사용 → 외부 의존성, 비용 발생
 
-**해결:**
+**현재 구현:** Claude LLM 직접 판단 → 제로 의존성, 비용 없음
+
+**장점:**
 
 ```python
 # session_manager.py
-# 세션 생성 시 질문의 embedding을 index.json에 저장
+# index.json에는 질문 텍스트만 저장 (embedding 불필요)
 
 {
   "sessions": {
     "research_20260201_143022_quantum": {
-      "question": "양자 컴퓨팅 최신 동향",
-      "question_embedding": [0.123, 0.456, ...],  # 캐싱!
+      "question": "양자 컴퓨팅 최신 동향",  # 텍스트만!
       "created_at": "2026-02-01T14:30:22Z",
-      ...
+      "iteration": 10,
+      "status": "running"
     }
   }
 }
 ```
 
-**효과:**
-- 첫 실행: Embedding 계산 (한 번만)
-- 이후 실행: 캐시된 embedding 사용
-- 비용 절감: N번 실행 시 1/N
+**비용 분석:**
+- Embedding API 호출: **$0** (사용 안 함)
+- 추가 LLM 토큰: 매우 적음 (세션 목록 텍스트만)
+- Extended Thinking: 이미 사용 중인 기능
+- 총 비용: **거의 0원**
+
+**세션 수가 많을 때:**
+- 최근 10개 세션만 비교 (옵션)
+- 필요시 전체 검색
+- index.json 메타데이터만 로드 (빠름)
 
 ### Symlink vs Copy
 

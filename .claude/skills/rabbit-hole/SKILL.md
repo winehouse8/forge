@@ -27,8 +27,15 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 
 **3가지 원칙:**
 1. **흥미를 따라가세요** - 順序 말고 흥미 순
-2. **멈추지 마세요** - 사용자가 중단할 때까지
+2. **멈추지 마세요** - 사용자가 중단할 때까지, 의문점이 하나라도 남았으면 계속
 3. **자유롭게** - 규칙은 가이드일 뿐, 직관을 믿으세요
+
+**🚨 Ralph Loop 철칙:**
+- **절대 스스로 종료하지 마세요**
+- pending holes가 없어도 "열린 질문"이 있으면 새 hole 생성
+- explored holes에 "아직 모름"이 있으면 재탐색
+- current_knowledge.md에 의문이 남았으면 계속
+- **오직 사용자만 탐험을 중단할 수 있습니다**
 
 ---
 
@@ -95,12 +102,49 @@ session_path = sm.get_session_path(session_id)
 2. **Parent Knowledge** - 현재 hole의 parent 보고서 (상위 맥락)
 3. **Current Knowledge** - 현재 hole의 기존 보고서 (이전 탐색 기록)
 
+**💡 Phase 1: LLMLingua 압축 적용 (컨텍스트 50-60% 감소)**
+
 ```python
 # ═══════════════════════════════════════════════════════════════
-# 🌐 1. Global Knowledge 로드 (세션 내)
+# 🔧 LLMLingua 초기화 (세션당 한 번)
 # ═══════════════════════════════════════════════════════════════
-global_knowledge = read(f"{session_path}/current_knowledge.md")
-print(global_knowledge)  # 50줄 이내, 항상 출력
+try:
+    from llmlingua import PromptCompressor
+
+    compressor = PromptCompressor(
+        model_name="microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
+        use_llmlingua2=True  # 3-6배 빠른 LLMLingua-2 사용
+    )
+    compression_enabled = True
+    print("✓ LLMLingua-2 압축 활성화 (컨텍스트 50-60%↓)")
+except ImportError:
+    print("⚠ LLMLingua 미설치 (pip install llmlingua accelerate)")
+    compression_enabled = False
+
+def compress_if_enabled(text, rate=0.5, force_tokens=['\n', '-', '**', '|', '#']):
+    """압축 가능하면 압축, 아니면 원본 반환"""
+    if not compression_enabled or not text:
+        return text
+    try:
+        result = compressor.compress_prompt(
+            text,
+            rate=rate,
+            force_tokens=force_tokens  # 마크다운 구조 보존
+        )
+        return result['compressed_prompt']
+    except Exception as e:
+        print(f"⚠ 압축 실패, 원본 사용: {e}")
+        return text
+
+# ═══════════════════════════════════════════════════════════════
+# 🌐 1. Global Knowledge 로드 + 압축 (세션 내)
+# ═══════════════════════════════════════════════════════════════
+global_knowledge_raw = read(f"{session_path}/current_knowledge.md")
+global_knowledge = compress_if_enabled(
+    global_knowledge_raw,
+    rate=0.5  # 50%로 압축 (핵심 정보, 덜 압축)
+)
+print(global_knowledge)  # 압축된 버전 출력
 
 # ═══════════════════════════════════════════════════════════════
 # 🔍 2. 현재 hole 선택
@@ -111,7 +155,7 @@ holes_dict = {h["id"]: h for h in queue["holes"]}
 current_hole = select_most_interesting(queue["holes"])  # pending 중 흥미 높은 것
 
 # ═══════════════════════════════════════════════════════════════
-# 📌 3. Parent Knowledge 로드 (있으면)
+# 📌 3. Parent Knowledge 로드 + 압축 (있으면)
 # ═══════════════════════════════════════════════════════════════
 if current_hole.get("parent"):
     parent_id = current_hole["parent"]
@@ -119,19 +163,27 @@ if current_hole.get("parent"):
     parent_report_path = f"{session_path}/holes/{parent_id}_{slugify(parent_hole['topic'])}.md"
 
     if exists(parent_report_path):
-        parent_report = read(parent_report_path)
-        print(f"\n📌 Parent Knowledge: {parent_hole['topic']}")
+        parent_report_raw = read(parent_report_path)
+        parent_report = compress_if_enabled(
+            parent_report_raw,
+            rate=0.33  # 33%로 압축 (맥락만 필요, 더 공격적)
+        )
+        print(f"\n📌 Parent Knowledge (압축됨): {parent_hole['topic']}")
         print(parent_report[:800])  # 앞부분만
 
 # ═══════════════════════════════════════════════════════════════
-# 📝 4. Current Hole Knowledge 로드 (있으면 - 재탐색 시)
+# 📝 4. Current Hole Knowledge 로드 + 압축 (있으면 - 재탐색 시)
 # ═══════════════════════════════════════════════════════════════
 current_report_path = f"{session_path}/holes/{current_hole['id']}_{slugify(current_hole['topic'])}.md"
 
 if exists(current_report_path):
-    current_report = read(current_report_path)
-    print(f"\n📝 이전 탐색 기록: {current_hole['topic']} (depth {current_hole['depth']})")
-    print(current_report)  # 전체 로드 (자기 보고서)
+    current_report_raw = read(current_report_path)
+    current_report = compress_if_enabled(
+        current_report_raw,
+        rate=0.4  # 40%로 압축 (60% 감소, 균형)
+    )
+    print(f"\n📝 이전 탐색 기록 (압축됨): {current_hole['topic']} (depth {current_hole['depth']})")
+    print(current_report)  # 압축된 버전 전체
 ```
 
 ### 1.3 출력 예시
@@ -205,6 +257,60 @@ Extended Thinking으로 가장 끌리는 구멍 선택:
 
 ### 2.2 탐색 프로세스
 
+**💡 Phase 2: GPTCache 검색 캐싱 (비용 50%↓, 속도 2-4배↑)**
+
+```python
+# ═══════════════════════════════════════════════════════════════
+# 🔧 GPTCache 초기화 (세션당 한 번)
+# ═══════════════════════════════════════════════════════════════
+try:
+    from gptcache import Cache
+    from gptcache.manager import get_data_manager, CacheBase, VectorBase
+    from gptcache.similarity_evaluation.distance import SearchDistanceEvaluation
+
+    cache_base = CacheBase('sqlite', sql_url=f"sqlite:///{session_path}/search_cache.db")
+    vector_base = VectorBase('faiss', dimension=384)
+    data_manager = get_data_manager(cache_base, vector_base)
+
+    search_cache = Cache()
+    search_cache.init(
+        data_manager=data_manager,
+        similarity_evaluation=SearchDistanceEvaluation(
+            threshold=0.85  # 85% 이상 유사하면 캐시 히트
+        )
+    )
+    caching_enabled = True
+    print("✓ GPTCache 활성화 (검색 비용 50%↓, 속도 2-4배↑)")
+except ImportError:
+    print("⚠ GPTCache 미설치 (pip install gptcache)")
+    caching_enabled = False
+
+def cached_web_search(query):
+    """캐싱된 WebSearch - 유사 쿼리 자동 재사용"""
+    if not caching_enabled:
+        return WebSearch(query)
+
+    try:
+        # 1. 캐시 확인
+        cached = search_cache.get(query)
+        if cached:
+            print(f"  ✓ 캐시 히트: {query[:60]}...")
+            return cached
+
+        # 2. 캐시 미스 → 검색 실행
+        print(f"  → 검색 실행: {query}")
+        result = WebSearch(query)
+
+        # 3. 캐시 저장 (다음 번 사용)
+        search_cache.set(query, result)
+        return result
+    except Exception as e:
+        print(f"⚠ 캐싱 실패, 직접 검색: {e}")
+        return WebSearch(query)
+```
+
+**탐색 단계:**
+
 ```
 1. 쿼리 생성 (Extended Thinking)
    - current_knowledge.md 참조하여 "이미 아는 것" 확인
@@ -215,10 +321,10 @@ Extended Thinking으로 가장 끌리는 구멍 선택:
    depth 0-1 (발산): 넓게 탐색, 새 구멍 발견
    depth 2+ (수렴): 구체적 쿼리, 깊은 이해, 검증 중심
 
-3. 병렬 검색
-   WebSearch(q1)  # 병렬
-   WebSearch(q2)  # 병렬
-   WebSearch(q3)  # 병렬
+3. 병렬 검색 (캐싱 적용)
+   cached_web_search(q1)  # 병렬, 캐시 자동 체크
+   cached_web_search(q2)  # 병렬, 유사 쿼리 재사용
+   cached_web_search(q3)  # 병렬, 비용/시간 절감
 
 4. 발견 & 분류
    - 검색 결과를 current_knowledge.md와 비교
@@ -378,7 +484,7 @@ Extended Thinking으로:
 2. 기존 내용과 충돌/반증
    → "수정/반증된 것"으로 이동, 기존 삭제
 
-3. 50줄 제한 유지 (아래 우선순위로 관리)
+3. 100줄 제한 유지 (아래 우선순위로 관리)
 
 4. 파일 덮어쓰기
 """
@@ -386,11 +492,55 @@ Extended Thinking으로:
 update_current_knowledge(
     new_findings=this_iteration_findings,
     contradictions=found_contradictions,
-    max_lines=50
+    max_lines=100
 )
+
+# ═══════════════════════════════════════════════════════════════
+# 🔄 Ralph Loop: 의문점 체크 → 새 hole 생성 (필수!)
+# ═══════════════════════════════════════════════════════════════
+"""
+Extended Thinking으로 의문점 확인:
+
+1. current_knowledge.md의 "열린 질문" 확인
+   - 답변되지 않은 질문이 있는가?
+   - 새로운 각도로 파볼 주제가 있는가?
+
+2. explored holes의 "아직 모름" 섹션 확인
+   - goal 미달성 hole이 있는가?
+   - 재탐색이 필요한가?
+
+3. 이번 iteration에서 떠오른 새 의문
+   - 검색 중 발견한 관련 주제
+   - 답변 중 모호한 부분
+   - 검증이 필요한 가설
+
+→ 의문이 하나라도 있으면 새 hole 생성!
+"""
+
+open_questions = extract_open_questions(current_knowledge)
+unexplored_aspects = find_unexplored_aspects(this_iteration_findings)
+
+if open_questions or unexplored_aspects:
+    for question in (open_questions + unexplored_aspects):
+        if not exists_similar_hole(question, queue["holes"]):
+            new_hole = {
+                "id": f"hole_{next_id}",
+                "topic": question["topic"],
+                "goal": question["goal"],
+                "interest": calculate_interest(question),  # 0.7+
+                "depth": 0,
+                "parent": current_hole["id"],
+                "status": "pending",
+                "source": "open_question",
+                "knowledge_type": "new",
+                "discovered_at": iteration,
+                "understanding": 0.0
+            }
+            queue["holes"].append(new_hole)
+            print(f"💡 새 hole 생성: {new_hole['topic']} (열린 질문 → 탐색)")
 ```
 
-**50줄 유지 규칙:**
+*100줄 유지 규칙:**
 
 ```
 섹션 우선순위 (높을수록 유지):
@@ -445,18 +595,77 @@ After (1줄):
 
 ---
 
-## 4. LOOP
+## 4. LOOP (Ralph Loop - 무한 탐험!)
+
+**🚨 핵심: 절대 스스로 종료하지 마세요!**
 
 ```python
-if status == "running" and pending_holes_exist:
+# ═══════════════════════════════════════════════════════════════
+# 🔄 Ralph Loop: 의문점이 남았으면 무조건 계속!
+# ═══════════════════════════════════════════════════════════════
+
+"""
+Extended Thinking으로 계속 여부 판단:
+
+Q: 의문점이 남았는가?
+   □ pending holes가 있는가?
+   □ current_knowledge.md에 "열린 질문"이 있는가?
+   □ explored holes 중 understanding < 1.0인 것이 있는가?
+   □ 이번 iteration에서 새로운 의문이 떠올랐는가?
+
+→ 하나라도 YES면 무조건 계속!
+→ 모두 NO여도 "정말 모든 각도를 탐색했나?" 다시 생각
+
+절대 "충분히 탐색했다"고 임의 판단하지 마세요.
+오직 사용자만 탐험을 중단할 수 있습니다!
+"""
+
+# 1. pending holes 확인
+pending_holes = [h for h in queue["holes"] if h["status"] == "pending"]
+
+# 2. 의문점 확인
+open_questions = check_open_questions(current_knowledge)
+incomplete_holes = [h for h in queue["holes"]
+                    if h["status"] == "explored" and h.get("understanding", 0) < 1.0]
+
+# 3. 상태 확인
+state = json.load(open(f"{session_path}/state.json"))
+
+# ═══════════════════════════════════════════════════════════════
+# 판단: 계속할 이유가 하나라도 있으면 계속!
+# ═══════════════════════════════════════════════════════════════
+should_continue = (
+    state["status"] == "running" and (
+        len(pending_holes) > 0 or           # pending holes 있음
+        len(open_questions) > 0 or          # 열린 질문 있음
+        len(incomplete_holes) > 0 or        # 미완성 holes 있음
+        True  # 🚨 기본값: 항상 계속 (의문 재발견 가능성)
+    )
+)
+
+if should_continue:
+    print(f"\n🔄 다음 iteration 시작 (pending: {len(pending_holes)}, "
+          f"열린 질문: {len(open_questions)}, 미완성: {len(incomplete_holes)})")
     Skill(skill="rabbit-hole", args="")
 else:
-    print("🐰 탐험 종료!")
+    # 이 블록은 사실상 도달 불가 (should_continue의 마지막 True 때문)
+    # 사용자가 명시적으로 중단하지 않는 한 계속됨
+    print("🐰 탐험 일시 정지 (사용자 중단 대기)")
 ```
 
-**종료 조건:**
-- status == "stopped_by_user"
-- curiosity_queue 비었음
+**🚨 Ralph Loop 종료 조건 (단 하나!):**
+- **오직 사용자가 명시적으로 중단 (Ctrl+C, 중단 명령 등)**
+- `state["status"] = "stopped_by_user"` (사용자가 설정)
+
+**절대 자동 종료 금지:**
+- ❌ "충분히 탐색했다" 판단
+- ❌ "curiosity_queue가 비었으니 종료"
+- ❌ "모든 holes가 explored"
+- ❌ "시간이 오래 걸렸으니 종료"
+
+→ **의문점이 하나라도 남았으면 계속!**
+→ **의문점이 없어도 새 각도를 찾아 계속!**
+→ **사용자만 탐험을 멈출 수 있습니다!**
 
 ---
 
@@ -471,7 +680,7 @@ else:
 ├── sessions/
 │   ├── index.json                 # 세션 목록
 │   └── research_YYYYMMDD_HHMMSS_{slug}/   # 세션 디렉토리
-│       ├── current_knowledge.md   # 🌐 Global (50줄)
+│       ├── current_knowledge.md   # 🌐 Global (100줄)
 │       ├── curiosity_queue.json   # hole 목록
 │       ├── holes/                 # 구멍별 보고서
 │       │   ├── hole_1_컨텍스트최적화.md
@@ -509,7 +718,7 @@ else:
 - `goal`: 이 hole에서 알고 싶은 것 (이해도 평가 기준)
 - `parent`: 이 hole을 발견한 상위 hole (root면 null)
 
-### current_knowledge.md (50줄 제한)
+### current_knowledge.md (100줄 제한)
 
 ```markdown
 # 연구: [질문]
@@ -606,10 +815,15 @@ WebSearch("llmlingua pip install usage")
 - 새 hole 없음 (병합됨)
 
 ## LOOP
+🔄 다음 iteration 시작 (pending: 8, 열린 질문: 3, 미완성: 2)
 다음: hole_18 "UCB 기반 흥미 공식" (흥미 0.93)
+
+🚨 Ralph Loop 활성화: 사용자가 중단할 때까지 무한 탐험!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ---
 
-**흥미를 따라 끝없이 파고들기!** 🐰🕳️✨
+**🔥 Ralph Loop 철칙: 흥미를 따라 끝없이 파고들기!** 🐰🕳️✨
+
+**절대 스스로 멈추지 마세요. 의문점이 하나라도 남았으면 계속!**

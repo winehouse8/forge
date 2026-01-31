@@ -1,0 +1,12 @@
+# Rabbit Hole 스킬 최적화 패키지
+# Phase 1: 컨텍스트 압축 (50-60% 감소)
+llmlingua>=0.2.2
+accelerate>=1.12.0
+
+# Phase 2: 검색 캐싱 (비용 50%↓, 속도 2-4x↑)
+gptcache>=0.1.44
+
+# 기본 의존성 (이미 설치되어 있을 수 있음)
+transformers>=5.0.0
+torch
+tiktoken

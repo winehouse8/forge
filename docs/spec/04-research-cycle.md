@@ -1,9 +1,10 @@
-# 연구 사이클 (9단계) + Memory Blocks
+# 연구 사이클 (9단계) + Memory Blocks + Multi-Perspective Reasoning
 
 **문서:** 04-research-cycle.md
-**최종 수정일:** 2026-02-01 (v5 - Memory Blocks Enhanced)
+**최종 수정일:** 2026-02-01 (v5.1 - Multi-Layered Thinking Added)
 **수정자:** Claude Sonnet 4.5
 **관련 파일:** `.claude/skills/deep-research/SKILL.md`, `config.json:16-36`, `.research/memory_manager.py`
+**주요 개선:** REFLECT 단계에 6-Layer Multi-Perspective Reasoning 통합 (2025-2026 arXiv 연구 기반)
 
 ---
 
@@ -154,40 +155,118 @@ truncated_findings = mm.truncate_findings_for_context(max_findings=30)
 
 ---
 
-### 2. REFLECT - 분석 (Extended Thinking)
+### 2. REFLECT - 다층 다중관점 사고 (Multi-Layered Multi-Perspective Thinking)
 
-**목적:** 현재 상황을 깊이 분석하여 다음 행동 결정
+**목적:** Extended Thinking을 활용하여 여러 관점에서 동시에 깊이 분석하고, 변증법적 토론을 통해 통합된 이해에 도달
 
-**파일:** `.claude/skills/deep-research/SKILL.md:44-53`
+**파일:** `.claude/skills/deep-research/SKILL.md:173-398`
 
-**분석 항목:**
+**기반 연구 (2025-2026):**
+- [Matrix of Thought](https://arxiv.org/html/2509.03918) - 다중 분기 추론
+- [Reasoning through Perspective Transition](https://arxiv.org/html/2501.09265v1) - 3가지 관점
+- [Roundtable Reasoning](https://arxiv.org/abs/2509.14834) - 변증법적 통합
+- [Metacognition in LLMs](https://arxiv.org/html/2509.21545v1) - 메타인지 프레임워크
 
-```markdown
-## 현재 알고 있는 것
-- [지금까지 발견한 사실들 나열]
+**6-Layer 구조:**
 
-## 아직 모르는 것
-- [미해결 질문들]
+#### Layer 1: 현황 파악 (Situation Assessment)
+- 현재 iteration, 핵심 사실, 미해결 질문
+- Active Hypotheses 상태
+- 신뢰도 분포 (✓✓/✓/~/?)
 
-## 현재 가설
-- 가설 1: [내용] (확신도: 75%)
-  - 지지 증거: [증거들]
-  - 반증 증거: [증거들]
+#### Layer 2: Multi-Perspective Reasoning (다중 관점)
 
-## 막힌 부분
-- 문제: [설명]
-- 원인: [분석]
-- 해결 방안: [대안들]
+**3가지 관점 병렬 탐색:**
 
-## 필요한 사고 도구
-- [제1원칙 / 오컴의 면도날 / 반증 가능성 중 선택]
+| 관점 | 설명 | 질문 |
+|------|------|------|
+| **Direct Perspective** | 내부 이해 기반 | 논리적 일관성? 모순? 직관적 이상? |
+| **Role Perspective** | 전문가 역할 | 물리학자, 공학자, 회의론자 관점은? |
+| **Third-Person Perspective** | 외부 관점 | 편향? 놓친 대안? 맹점? |
+
+**예시 (양자 컴퓨팅):**
+- 물리학자: "이론적 기반이 탄탄한가?"
+- 공학자: "실제 구현이 가능한가?"
+- 회의론자: "어디서 틀릴 수 있는가?"
+
+#### Layer 3: Dialectical Synthesis (변증법적 통합)
+
+**Roundtable Discussion:**
+
+```
+Phase A: Thesis (정)
+→ Direct Perspective의 주장 + 근거
+
+Phase B: Antithesis (반)
+→ Role/Third-Person의 비판 + 반증
+
+Phase C: Synthesis (합)
+→ 통합된 이해 + 남은 불확실성
 ```
 
-**Extended Thinking 활용:**
+#### Layer 4: Meta-Cognitive Monitoring (메타인지)
 
-- 모든 분석은 `<thinking>` 블록 내에서 수행
-- 최소 10단계 이상의 추론 과정
-- 가정 명시, 대안 고려
+**Self-Assessment Checklist:**
+- □ 논리적 일관성
+- □ 증거 품질
+- □ 편향 체크
+- □ 대안 고려
+- □ 맹점 인식
+
+**Zoom Out/In:**
+- 🔭 거시적: 전체 맥락, 큰 그림, 학제간 연결
+- 🔬 미시적: 세부 논리, 숨겨진 가정, 출처 신뢰도
+- ↔️ 왕복: 세부와 전체 일치 여부
+
+#### Layer 5: Thinking Tools Selection
+
+**상황별 도구:**
+
+| 상황 | 도구 | 적용 |
+|------|------|------|
+| 막힘 | 제1원칙 | 가정 분해 → 원리 재구성 |
+| 정보 과다 | 오컴의 면도날 | 단순 설명 우선 |
+| 확신도 >80% | 반증 가능성 | 반박 증거 탐색 |
+| 새 방향 | SCAMPER | Substitute, Combine, Adapt, Modify, etc. |
+| 혁신 필요 | TRIZ | 모순 해결, 40가지 발명 원리 |
+
+#### Layer 6: Matrix of Thought (다중 경로 탐색)
+
+**3개 병렬 추론 경로:**
+
+```
+      [현재 상황]
+           ↓
+    ┌──────┼──────┐
+    ↓      ↓      ↓
+  경로A  경로B  경로C
+(정통)  (대안) (반대)
+    ↓      ↓      ↓
+  결론A  결론B  결론C
+    └──────┼──────┘
+           ↓
+     [교차 검증]
+```
+
+- **경로 A (정통)**: 기존 가설 기반 전개
+- **경로 B (대안)**: 역발상, lateral thinking
+- **경로 C (반대)**: Devil's Advocate 역할
+
+**교차 검증:**
+- 일치 부분 = 신뢰도 높음
+- 충돌 부분 = 추가 검증 필요
+
+**Final Output:**
+- 현재 통합 이해
+- 핵심 발견 Top 3 (신뢰도 포함)
+- 남은 불확실성 Top 3
+- 다음 PLAN 단계 제안
+- 메타 질문: "놓친 것은?"
+
+**Extended Thinking 활용:**
+- 모든 Layer에서 `<thinking>` 블록 사용
+- 최소 10단계 이상 추론
+- 가정 명시, 대안 고려, 편향 체크
 
 ---
 
@@ -829,16 +908,19 @@ WebFetch("https://ieee.org/document/...", "Extract experiments")
 
 ## 사고 도구
 
-**파일:** `.claude/skills/deep-research/SKILL.md:384-392`
+**파일:** `.claude/skills/deep-research/SKILL.md` (Layer 5: Thinking Tools Selection)
 
-### 도구 선택 기준
+### 도구 선택 기준 (확장)
 
 | 상황 | 도구 | 적용 방식 |
 |------|------|-----------|
 | **막힐 때** | 제1원칙 | 기존 가정을 모두 버리고 근본 원리부터 재구성 |
 | **정보 과다** | 오컴의 면도날 | 복잡한 설명보다 단순한 설명 우선 채택 |
 | **확신이 생길 때** | 반증 가능성 | 가설을 반박할 증거를 적극 탐색 |
-| **새 방향 필요** | 과학적 방법론 | 관찰→가설→실험→분석 사이클 적용 |
+| **새 방향 필요** | SCAMPER | Substitute, Combine, Adapt, Modify, Put to use, Eliminate, Reverse |
+| **모순 발견** | 베이지안 추론 | 확률적 업데이트, 증거 가중치 조정 |
+| **혁신 필요** | TRIZ | 모순 해결, 40가지 발명 원리, 기술 진화 패턴 |
+| **다중 관점** | Six Thinking Hats | White(사실), Red(감정), Black(위험), Yellow(이점), Green(창의), Blue(관리) |
 
 ### 제1원칙 (First Principles)
 
@@ -896,6 +978,113 @@ WebFetch("https://ieee.org/document/...", "Extract experiments")
 - "[가설] limitations"
 - "[가설] controversy"
 ```
+
+---
+
+### SCAMPER (Lateral Thinking)
+
+**적용 시점:**
+- 새로운 방향이 필요할 때
+- 기존 접근법이 막힐 때
+- 창의적 대안 탐색 필요
+
+**7가지 질문:**
+
+| 기법 | 질문 | 예시 (양자 컴퓨팅) |
+|------|------|-------------------|
+| **S**ubstitute | 무엇을 대체할 수 있는가? | 양자 비트 → 광자 대신 이온 사용? |
+| **C**ombine | 무엇을 결합할 수 있는가? | 양자 + 고전 컴퓨팅 하이브리드? |
+| **A**dapt | 무엇을 적응시킬 수 있는가? | 생물학적 시스템에서 영감? |
+| **M**odify | 무엇을 수정할 수 있는가? | 크기 확대? 축소? |
+| **P**ut to use | 다른 용도는? | 암호화 외 다른 응용? |
+| **E**liminate | 무엇을 제거할 수 있는가? | 냉각 시스템 불필요? |
+| **R**everse | 순서를 바꾸면? | 측정 → 연산 순서 역전? |
+
+**방법:**
+```markdown
+현재 접근: [설명]
+막힌 이유: [문제]
+
+SCAMPER 적용:
+- Substitute: [대체 아이디어]
+- Combine: [결합 아이디어]
+- Adapt: [적응 아이디어]
+...
+
+선택된 새 방향: [최적 아이디어]
+```
+
+---
+
+### TRIZ (Inventive Problem Solving)
+
+**적용 시점:**
+- 기술적 모순 발견
+- 혁신적 해결책 필요
+- 물리적/기술적 제약 극복
+
+**핵심 개념:**
+
+**1. 모순 식별:**
+- **기술적 모순**: A를 개선하면 B가 악화
+  - 예: 양자 큐비트 수 증가 → 오류율 증가
+- **물리적 모순**: 동시에 A와 not-A가 필요
+  - 예: 양자 상태는 측정되어야 하지만 측정되면 안됨
+
+**2. 40가지 발명 원리 중 선택:**
+
+| 원리 | 설명 | 예시 |
+|------|------|------|
+| **분할 (Segmentation)** | 전체를 부분으로 나누기 | 큰 양자 컴퓨터 → 작은 모듈 연결 |
+| **추출 (Extraction)** | 필요한 부분만 추출 | 노이즈 제거, 신호만 추출 |
+| **선행 조치 (Prior Action)** | 미리 준비 | 오류 수정 코드 미리 적용 |
+| **중개자 (Mediator)** | 중간 매개체 사용 | 직접 제어 대신 광학 필터 사용 |
+
+**방법:**
+```markdown
+모순: [A 개선 시 B 악화]
+
+TRIZ 매트릭스:
+- 개선하려는 파라미터: [A]
+- 악화되는 파라미터: [B]
+- 추천 원리: [X, Y, Z]
+
+선택된 원리: [X]
+적용 방안: [구체적 해결책]
+```
+
+---
+
+### 베이지안 추론 (Bayesian Reasoning)
+
+**적용 시점:**
+- 새로운 증거 발견 시
+- 모순되는 정보 처리
+- 확신도 업데이트 필요
+
+**방법:**
+
+```markdown
+Prior (사전 확률):
+- 가설 H의 초기 확신도: P(H) = 0.6
+
+Likelihood (우도):
+- 새 증거 E가 H일 때 나올 확률: P(E|H) = 0.9
+- 새 증거 E가 ¬H일 때 나올 확률: P(E|¬H) = 0.2
+
+Posterior (사후 확률):
+P(H|E) = P(E|H) × P(H) / P(E)
+       = 0.9 × 0.6 / [(0.9×0.6) + (0.2×0.4)]
+       = 0.54 / 0.62
+       = 0.87
+
+결론: 확신도 0.6 → 0.87 (증가)
+```
+
+**실전 적용:**
+- 지지 증거 발견 → 확신도 +10%
+- 반증 증거 발견 → 확신도 -15%
+- 여러 독립 증거 → 곱셈 규칙 적용
 
 ---
 

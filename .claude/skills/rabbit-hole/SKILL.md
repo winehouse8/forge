@@ -31,6 +31,123 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep, Skill
 
 ---
 
+## 🏛️ 정보의 허브 (Information Hubs)
+
+### 개념
+
+**정보의 허브**는 특정 분야의 고급 정보가 집중된 신뢰할 수 있는 출처입니다.
+
+```
+예시:
+- 스타트업 → Y Combinator, a16z, Sequoia
+- AI/ML → arXiv, Hugging Face, Papers with Code
+- 개발 → GitHub, Stack Overflow, HackerNews
+- 학술 → Google Scholar, PubMed, IEEE
+```
+
+### 왜 허브가 중요한가?
+
+```
+일반 검색:
+  "스타트업 펀딩 전략" → 블로그, 뉴스, 잡다한 결과
+
+허브 활용 검색:
+  "site:ycombinator.com 펀딩 전략" → YC의 고급 인사이트
+  "a16z fundraising playbook" → 전문가 관점
+```
+
+**효과:**
+- ✅ 노이즈 감소 (저품질 정보 필터링)
+- ✅ 고급 정보 접근 (전문가/기관 관점)
+- ✅ 검색 효율 상승 (허브 키워드 + 실제 쿼리)
+
+### 허브 리스트 관리
+
+**파일:** `.research/info_hubs.json`
+
+```json
+{
+  "hubs": [
+    {
+      "id": "hub_1",
+      "domain": "ycombinator.com",
+      "name": "Y Combinator",
+      "category": "startup",
+      "quality_score": 0.95,
+      "hit_count": 12,
+      "discovered_at": "iteration_1",
+      "notes": "스타트업 조언, 창업자 에세이"
+    },
+    {
+      "id": "hub_2",
+      "domain": "arxiv.org",
+      "name": "arXiv",
+      "category": "academic",
+      "quality_score": 0.90,
+      "hit_count": 8,
+      "discovered_at": "iteration_3",
+      "notes": "최신 논문, preprint"
+    }
+  ],
+  "category_index": {
+    "startup": ["hub_1", "hub_3"],
+    "academic": ["hub_2"],
+    "tech": ["hub_4", "hub_5"]
+  }
+}
+```
+
+### 허브 CRUD 작업
+
+**Create (발견):**
+```markdown
+검색 결과 분석 중:
+  Result from "sequoia.com":
+    - 고품질 콘텐츠 발견
+    - 해당 주제 전문성 높음
+
+  → 허브 후보 판단:
+    - 도메인: sequoia.com
+    - 카테고리: startup/VC
+    - 품질 점수: 0.88
+    - 임계값: 0.70 초과 ✓
+
+  → info_hubs.json에 추가!
+```
+
+**Read (활용):**
+```python
+# 검색 시 허브 활용
+relevant_hubs = get_hubs_for_topic(current_hole.topic)
+
+for hub in relevant_hubs:
+    # 허브 키워드 + 실제 쿼리 조합
+    enhanced_query = f"site:{hub.domain} {original_query}"
+    # 또는
+    enhanced_query = f"{hub.name} {original_query}"
+```
+
+**Update (품질 갱신):**
+```python
+# 검색 결과가 유용했으면
+hub.hit_count += 1
+hub.quality_score = recalculate_score(hub)
+
+# 검색 결과가 별로였으면
+hub.miss_count += 1
+hub.quality_score = recalculate_score(hub)
+```
+
+**Delete (제거):**
+```python
+# 품질 점수가 임계값 이하로 떨어지면
+if hub.quality_score < 0.50:
+    remove_hub(hub.id)
+    # 또는 "deprecated" 마킹
+```
+
+---
+
 ## 📋 절대 규칙
 
 ### 1. 흥미를 따라가세요
@@ -75,13 +192,133 @@ LLM 직관 믿기
 ## 🔄 사이클 (Rabbit Hole Loop)
 
 ```
-1. LOAD      - 상태 로드 (curiosity_queue)
+0. HUB_SCOUT - [첫 iteration만] 정보의 허브 탐색
+1. LOAD      - 상태 로드 (curiosity_queue + info_hubs)
 2. SELECT    - 가장 흥미로운 구멍 선택
-3. DIG       - 구멍 파기 (발산→검색→발견→수렴→검증)
+3. DIG       - 구멍 파기 (발산→검색→발견→수렴→검증) + 허브 발견
 4. REFLECT   - 더 팔까? vs Pivot?
-5. SAVE      - 상태 저장
+5. SAVE      - 상태 저장 (큐 + 허브 리스트)
 6. OUTPUT    - 진행 상황 출력
 7. LOOP      - 다음 구멍으로 (Ralph Loop)
+```
+
+---
+
+## 0. HUB_SCOUT (첫 iteration - 정보의 허브 탐색)
+
+**첫 iteration에서만 실행됩니다.**
+
+### 목적
+
+연구 주제와 관련된 **고품질 정보 허브**를 먼저 식별하여, 이후 검색의 효율을 높입니다.
+
+### 실행 조건
+
+```python
+if state["iteration"]["current"] == 0:
+    # HUB_SCOUT 실행
+    execute_hub_scout()
+else:
+    # 스킵 → 바로 LOAD로
+    pass
+```
+
+### 프로세스
+
+```markdown
+질문: "$ARGUMENTS"
+
+Step 1: 주제 분석
+  Extended Thinking:
+    이 주제의 정보가 집중된 곳은 어디인가?
+    - 학술 분야? → arXiv, Google Scholar, PubMed
+    - 기술 분야? → GitHub, HackerNews, Stack Overflow
+    - 비즈니스? → HBR, McKinsey, specific industry sites
+    - 스타트업? → YC, a16z, TechCrunch
+    - 특정 커뮤니티? → Reddit, Discord, 전문 포럼
+
+Step 2: 허브 후보 검색
+  WebSearch("best resources for [주제]")
+  WebSearch("[주제] expert blogs sites")
+  WebSearch("[주제] research papers where to find")
+  WebSearch("[주제] community forums")
+
+Step 3: 허브 식별 및 평가
+  검색 결과에서:
+  - 자주 언급되는 도메인/사이트
+  - 전문가들이 추천하는 출처
+  - 고품질 콘텐츠가 집중된 곳
+
+  각 후보에 대해:
+  - domain: 사이트 도메인
+  - name: 사이트/조직 이름
+  - category: 분류 (academic, tech, business, community 등)
+  - quality_score: 초기 품질 점수 (0.7 ~ 1.0)
+  - reason: 왜 허브인지
+
+Step 4: 허브 리스트 초기화
+  info_hubs.json 생성:
+  {
+    "hubs": [...identified hubs...],
+    "category_index": {...}
+  }
+```
+
+### 예시
+
+```markdown
+질문: "양자 컴퓨팅의 최신 발전 상황"
+
+Step 1: 주제 분석
+  - 학술/연구 분야 (물리학, CS)
+  - 기업 R&D (IBM, Google, Microsoft)
+  - 뉴스/트렌드
+
+Step 2: 허브 후보 검색
+  → "best quantum computing resources"
+  → "quantum computing research papers"
+  → "quantum computing news sites"
+
+Step 3: 식별된 허브
+  1. arxiv.org/quant-ph (학술, 0.95)
+  2. research.ibm.com/quantum (기업 연구, 0.90)
+  3. research.google/quantum (기업 연구, 0.90)
+  4. quantumscijournal.com (뉴스, 0.75)
+
+Step 4: info_hubs.json 저장
+```
+
+### 출력
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏛️ 정보의 허브 탐색 완료
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📍 발견된 허브 (4개):
+
+1. 🎓 arxiv.org/quant-ph
+   카테고리: academic
+   품질: ★★★★★ (0.95)
+   "양자 물리학 프리프린트"
+
+2. 🏢 research.ibm.com/quantum
+   카테고리: corporate_research
+   품질: ★★★★☆ (0.90)
+   "IBM 양자 컴퓨팅 연구"
+
+3. 🏢 research.google/quantum
+   카테고리: corporate_research
+   품질: ★★★★☆ (0.90)
+   "Google 양자 AI"
+
+4. 📰 quantumscijournal.com
+   카테고리: news
+   품질: ★★★☆☆ (0.75)
+   "양자 컴퓨팅 뉴스"
+
+💡 이 허브들을 활용해 검색 품질을 높입니다!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ---
@@ -95,14 +332,19 @@ LLM 직관 믿기
 
 Curiosity Queue:
 !`cat .research/curiosity_queue.json 2>/dev/null || echo '{"holes":[]}'`
+
+Info Hubs:
+!`cat .research/info_hubs.json 2>/dev/null || echo '{"hubs":[]}'`
 ```
 
 **첫 실행 시:**
 
 ```python
 from curiosity_manager import CuriosityManager
+from hub_manager import HubManager
 
 cm = CuriosityManager()
+hm = HubManager()
 
 if cm.is_first_run():
     # 초기 탐색 구멍 생성
@@ -118,6 +360,9 @@ if cm.is_first_run():
             interest=hole["interest"],
             depth=0
         )
+
+    # 허브 로드 (HUB_SCOUT에서 이미 생성됨)
+    hubs = hm.load_hubs()
 ```
 
 **이어서 실행 시:**
@@ -126,6 +371,10 @@ if cm.is_first_run():
 # 기존 큐 로드
 holes = cm.load_queue()
 current_hole = cm.get_current_hole()
+
+# 허브 리스트 로드
+hubs = hm.load_hubs()
+relevant_hubs = hm.get_hubs_for_topic(current_hole.topic)
 ```
 
 ---
@@ -241,22 +490,58 @@ Extended Thinking:
   → 최종: [q1, q2, q3, q4]
 ```
 
-### 3-2. 검색 (정보 수집)
+### 3-2. 검색 (정보 수집) + 허브 활용
+
+**허브 강화 검색 전략:**
 
 ```python
-# 병렬 검색
-WebSearch(queries[0])  # 병렬
-WebSearch(queries[1])  # 병렬
-WebSearch(queries[2])  # 병렬
-WebSearch(queries[3])  # 병렬
+# 1. 관련 허브 조회
+relevant_hubs = hm.get_hubs_for_topic(current_hole.topic)
 
-# 히스토리 저장
-for query, result in zip(queries, results):
+# 2. 검색 쿼리 확장
+enhanced_queries = []
+
+for query in queries:
+    # 일반 검색
+    enhanced_queries.append(query)
+
+    # 허브 강화 검색 (상위 2-3개 허브만)
+    for hub in relevant_hubs[:3]:
+        # site: 연산자 활용
+        enhanced_queries.append(f"site:{hub.domain} {query}")
+        # 또는 허브 이름 조합
+        enhanced_queries.append(f"{hub.name} {query}")
+
+# 3. 병렬 검색 (중복 제거 후)
+unique_queries = deduplicate_queries(enhanced_queries)
+
+WebSearch(unique_queries[0])  # 병렬
+WebSearch(unique_queries[1])  # 병렬
+WebSearch(unique_queries[2])  # 병렬
+# ...
+
+# 4. 히스토리 저장
+for query, result in zip(unique_queries, results):
     add_query_to_history(
         query_text=query,
         iteration=current_iteration,
-        hole_id=selected_hole.id
+        hole_id=selected_hole.id,
+        hub_used=extract_hub_from_query(query)  # 허브 사용 추적
     )
+```
+
+**예시:**
+
+```markdown
+원본 쿼리: "Majorana fermion experiment"
+
+관련 허브: [arxiv.org, nature.com, science.org]
+
+확장된 검색:
+1. "Majorana fermion experiment" (일반)
+2. "site:arxiv.org Majorana fermion experiment" (허브 강화)
+3. "site:nature.com Majorana fermion experiment" (허브 강화)
+4. "Nature Majorana fermion experiment" (허브 이름 조합)
 ```
 
 ### 3-3. 발견 (새 구멍 찾기)
@@ -307,6 +592,60 @@ cm.add_hole(
     interest=0.90,
     parent=selected_hole.id
 )
+```
+
+### 3-3b. 허브 발견 (새 정보 허브 식별)
+
+**검색 결과에서 고품질 출처 식별:**
+
+```markdown
+검색 결과 분석 중 (허브 관점):
+
+Result 3 (physicstoday.org):
+  - 도메인: physicstoday.org
+  - 콘텐츠 품질: 높음 (전문적)
+  - 이미 허브 목록에 있나? → 없음
+
+  허브 후보 평가:
+  - 전문성: +0.3 (물리학 전문 매거진)
+  - 일관성: +0.2 (다른 결과에서도 등장)
+  - 깊이: +0.2 (심층 기사)
+  - 신뢰성: +0.2 (AIP 발행)
+  → 품질 점수: 0.90
+
+  임계값: 0.90 > 0.70 ✓
+  → 새 허브로 추가!
+
+hm.add_hub(
+    domain="physicstoday.org",
+    name="Physics Today",
+    category="academic_magazine",
+    quality_score=0.90,
+    discovered_at=f"iteration_{current_iteration}",
+    notes="AIP 발행, 물리학 심층 기사"
+)
+```
+
+**기존 허브 품질 갱신:**
+
+```python
+# 검색 결과에서 기존 허브의 결과가 유용했는지 평가
+for result in search_results:
+    domain = extract_domain(result.url)
+    hub = hm.get_hub_by_domain(domain)
+
+    if hub:
+        if result.was_useful:
+            hm.record_hit(hub.id)  # hit_count++
+        else:
+            hm.record_miss(hub.id)  # miss_count++
+
+        # 품질 점수 재계산
+        hm.recalculate_quality(hub.id)
+
+        # 품질이 임계값 이하로 떨어지면 경고
+        if hub.quality_score < 0.50:
+            print(f"⚠️ 허브 품질 저하: {hub.name}")
 ```
 
 ### 3-4. 수렴 (이 구멍 이해)
@@ -424,6 +763,9 @@ cm.update_hole(
 # 큐 저장
 cm.save_queue()
 
+# 허브 리스트 저장
+hm.save_hubs()
+
 # state.json 업데이트
 state["iteration"]["current"] += 1
 state["current_hole"] = None  # 이번 구멍 완료
@@ -472,6 +814,12 @@ mm.save_state(state)
               ├─ hole_7 "Kitaev"
               └─ hole_8 "Microsoft" ← 다음
 
+🏛️ 정보 허브 현황:
+  ★★★★★ arxiv.org (hit: 15, 품질: 0.95)
+  ★★★★☆ nature.com (hit: 8, 품질: 0.88)
+  ★★★★☆ physicstoday.org (hit: 3, 품질: 0.90) ← 새로 발견!
+  ★★★☆☆ wikipedia.org (hit: 12, 품질: 0.70)
+
 🐰 다음 구멍을 팝니다...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
@@ -516,6 +864,7 @@ else:
 
 - **references/curiosity_heuristics.md** - 흥미도 판단
 - **references/digging_process.md** - 파기 상세 프로세스
+- **references/hub_management.md** - 정보 허브 관리 전략
 
 ---
 

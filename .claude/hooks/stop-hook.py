@@ -1,19 +1,40 @@
 #!/usr/bin/env python3
 """
-Stop Hook: Objective Criteria 기반 리서치 루프 제어
-Research Report 권장사항: Deterministic verification over probabilistic iteration count
+Stop Hook: Ralph Loop 구현 - 사용자만 탐험을 멈출 수 있습니다!
+
+SKILL.md 철칙:
+  - 오직 state["status"] = "stopped_by_user"일 때만 종료 허용
+  - 절대 자동 종료 금지: max_iter, criteria_met 등 모두 금지
+  - 의문점이 하나라도 남았으면 무조건 계속!
+
+안전장치만 허용:
+  - Budget 초과 (비용 폭발 방지)
+  - Loop drift (무한 루프 방지)
 """
 
 import json
 import sys
 import os
 
-STATE_FILE = ".research/state.json"
+STATE_FILE = ".research/state.json"  # Legacy (backward compatibility)
+CURRENT_SESSION_STATE = ".research/current/state.json"  # Session-based (new)
 MAX_ITERATIONS = 100
 BUDGET_LIMIT = 10.0
 
 
 def load_state():
+    """
+    Load state from current session (if exists), fallback to legacy path.
+    Priority: .research/current/state.json > .research/state.json
+    """
+    # Try session-based state first (new multi-session architecture)
+    try:
+        with open(CURRENT_SESSION_STATE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        pass
+
+    # Fallback to legacy state file (backward compatibility)
     try:
         with open(STATE_FILE, 'r') as f:
             return json.load(f)
@@ -33,7 +54,12 @@ def check_completion_criteria(state):
     # 기본 criteria가 없으면 자동 생성 (backward compatibility)
     if not criteria:
         # state 정보를 바탕으로 자동 평가
-        decomposed_questions = state.get("question", {}).get("decomposed", [])
+        question_field = state.get("question", {})
+        if isinstance(question_field, dict):
+            decomposed_questions = question_field.get("decomposed", [])
+        else:
+            decomposed_questions = []  # New structure: question is string
+
         total_searches = state.get("metrics", {}).get("total_searches", 0)
         contradictions = state.get("contradictions_found", [])
 
@@ -71,75 +97,112 @@ def main():
     # 0. 상태 파일이 없으면 연구 세션이 아니므로 종료 허용
     if state is None:
         output = {
-            "decision": "allow",
+            "decision": "approve",  # Fixed: "allow" → "approve"
             "reason": "No active research session"
         }
         print(json.dumps(output))
         sys.exit(0)
 
-    iteration = state.get("iteration", {}).get("current", 0)
-    max_iter = state.get("iteration", {}).get("max", MAX_ITERATIONS)
+    # Support both old and new state.json structures
+    iteration_field = state.get("iteration", 0)
+    if isinstance(iteration_field, dict):
+        # Old structure: {"iteration": {"current": 5, "max": 100}}
+        iteration = iteration_field.get("current", 0)
+        max_iter = iteration_field.get("max", MAX_ITERATIONS)
+    else:
+        # New structure (session-based): {"iteration": 7}
+        iteration = iteration_field
+        max_iter = MAX_ITERATIONS
+
     status = state.get("status", "initialized")
     budget = state.get("metrics", {}).get("cost_estimate_usd", 0.0)
 
-    # === OBJECTIVE CRITERIA CHECK (New!) ===
-    criteria_met, unmet_criteria = check_completion_criteria(state)
+    # ═══════════════════════════════════════════════════════════════
+    # 🔍 rabbit-hole 세션 여부 확인 (다중 세션 대응)
+    # ═══════════════════════════════════════════════════════════════
+    # 공식 문서: 모든 hook은 session_id를 받음!
+    # https://code.claude.com/docs/en/hooks#common-input-fields
+    #
+    # 알고리즘:
+    # 1. rabbit-hole 시작 시: session_id를 .research/current/.session_id에 저장
+    # 2. stop-hook 실행 시: hook_input의 session_id와 저장된 값 비교
+    # 3. 일치 → 현재 세션이 rabbit-hole 실행 중 → Ralph Loop
+    # 4. 불일치 → 다른 세션 → 정상 종료
+    # ═══════════════════════════════════════════════════════════════
 
-    # 종료 조건 체크 (우선순위 순서)
-    should_stop = False
+    SESSION_ID_FILE = ".research/current/.session_id"
+    current_session_id = hook_input.get("session_id", "")
+
+    is_rabbit_hole_session = False
+
+    if os.path.exists(CURRENT_SESSION_STATE):
+        # state.json 존재 → rabbit-hole 세션이 어딘가 존재함
+        # 하지만 현재 세션인지 확인 필요
+        if os.path.exists(SESSION_ID_FILE):
+            try:
+                with open(SESSION_ID_FILE, 'r') as f:
+                    saved_session_id = f.read().strip()
+
+                # session_id 일치 여부 확인
+                if current_session_id and current_session_id == saved_session_id:
+                    # 현재 세션이 rabbit-hole 실행 중!
+                    is_rabbit_hole_session = True
+            except:
+                pass
+
+    if not is_rabbit_hole_session:
+        # 일반 작업 또는 다른 세션 → 정상 종료 허용 (Ralph Loop 미적용)
+        output = {
+            "decision": "approve",
+            "reason": "Not this session's rabbit-hole (normal termination allowed)"
+        }
+        print(json.dumps(output))
+        sys.exit(0)
+
+    # ═══════════════════════════════════════════════════════════════
+    # 🐰 Ralph Loop 철칙: 사용자만 탐험을 멈출 수 있습니다!
+    # ═══════════════════════════════════════════════════════════════
+    # SKILL.md 명세 (rabbit-hole 스킬 전용):
+    #   - 오직 state["status"] = "stopped_by_user"일 때만 종료 허용
+    #   - 절대 자동 종료 금지: max_iter, criteria_met 등 모두 금지
+    #   - 의문점이 하나라도 남았으면 무조건 계속!
+    # ═══════════════════════════════════════════════════════════════
+
+    should_approve_termination = False
     reason = ""
 
-    # 1. Budget 초과 (최우선)
+    # 1. Budget 초과 (안전장치)
     if budget >= BUDGET_LIMIT:
-        should_stop = True
+        should_approve_termination = True
         reason = f"🚫 Budget limit (${BUDGET_LIMIT}) exceeded: ${budget:.2f}"
 
-    # 2. status가 "running"이 아니면 종료 허용
+    # 2. status가 "running"이 아니면 종료 허용 (사용자가 중단했거나 세션 종료)
     elif status != "running":
-        should_stop = True
+        should_approve_termination = True
         reason = f"Research session not active (status: {status})"
 
-    # 3. Max iterations 도달
-    elif iteration >= max_iter:
-        should_stop = True
-        reason = f"Maximum iterations ({max_iter}) reached"
+    # 3. Loop drift 안전장치 (무한 루프 방지)
+    elif iteration > 10 and state.get("loop_drift", {}).get("consecutive_same_action", 0) > 5:
+        should_approve_termination = True
+        reason = "⚠️ Loop drift detected, forcing stop"
 
-    # 4. Objective Criteria 충족 (New!)
-    elif criteria_met:
-        should_stop = True
-        reason = f"✅ All completion criteria met (deterministic verification)"
-
-    # 5. Loop drift 안전장치
-    elif hook_input.get("stop_hook_active", False):
-        if iteration > 10 and state.get("loop_drift", {}).get("consecutive_same_action", 0) > 5:
-            should_stop = True
-            reason = "⚠️ Loop drift detected, forcing stop"
-
-    # 결정 출력 및 exit code 결정
-    if should_stop:
+    # ═══════════════════════════════════════════════════════════════
+    # 결정: approve (종료 허용) vs block (종료 차단, Ralph Loop 계속)
+    # ═══════════════════════════════════════════════════════════════
+    if should_approve_termination:
         # 종료 허용: exit code 0
         output = {
-            "decision": "allow",
+            "decision": "approve",
             "reason": reason
         }
         print(json.dumps(output))
         sys.exit(0)
     else:
-        # 종료 차단: exit code 1 (Ralph Loop 패턴)
-        # Unmet criteria를 명확히 알려줌 (Deterministic feedback)
-        if unmet_criteria:
-            unmet_list = [c['criterion'] for c in unmet_criteria]
-            focus = unmet_list[0] if unmet_list else "Continue research"
-            output = {
-                "decision": "block",
-                "reason": f"🔬 Iteration {iteration}/{max_iter} | Unmet: {', '.join(unmet_list[:2])} | Focus: {focus}"
-            }
-        else:
-            output = {
-                "decision": "block",
-                "reason": f"🔬 Iteration {iteration}/{max_iter} in progress. Research continues."
-            }
-
+        # 종료 차단: exit code 1 (Ralph Loop 무한 탐험!)
+        output = {
+            "decision": "block",
+            "reason": f"🐰 Iteration {iteration} | Ralph Loop 활성화: 사용자가 중단할 때까지 무한 탐험!"
+        }
         print(json.dumps(output))
         sys.exit(1)  # Non-zero exit code blocks termination
 

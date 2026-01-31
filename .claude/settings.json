@@ -9,6 +9,13 @@
   },
 
   "hooks": {
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python3 /Users/jaewoo/Desktop/Project/dev/260131_pathfinder/forge/.claude/hooks/user-prompt-submit-hook.py",
+        "statusMessage": "Detecting rabbit-hole session..."
+      }]
+    }],
     "Stop": [{
       "hooks": [{
         "type": "command",

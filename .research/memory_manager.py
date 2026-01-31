@@ -21,10 +21,11 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 
-WORKING_MEMORY_FILE = ".research/working_memory.json"
-SEMANTIC_MEMORY_FILE = ".research/findings.md"
-ARCHIVAL_DIR = ".research/archival/"
-STATE_FILE = ".research/state.json"
+CURRENT_SESSION_DIR = ".research/current"  # Symlink to active session
+WORKING_MEMORY_FILE = f"{CURRENT_SESSION_DIR}/working_memory.json"
+SEMANTIC_MEMORY_FILE = f"{CURRENT_SESSION_DIR}/findings.md"
+ARCHIVAL_DIR = f"{CURRENT_SESSION_DIR}/archival/"
+STATE_FILE = f"{CURRENT_SESSION_DIR}/state.json"
 
 OBSERVATION_WINDOW = 10  # JetBrains Research recommendation
 

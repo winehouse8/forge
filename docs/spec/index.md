@@ -64,6 +64,7 @@
 | [11-skills-api.md](./11-skills-api.md) | 스킬 API 명세 (/dr, /research-status 등) | 스킬 수정/추가 시 |
 | [12-hooks-api.md](./12-hooks-api.md) | Stop Hook API 명세 | Hook 수정 시 |
 | [13-native-function-calling.md](./13-native-function-calling.md) | Native Function Calling (2025-2026 표준) | 도구 호출 최적화 시 |
+| [14-session-management.md](./14-session-management.md) | 세션 관리 (자동 감지, Zero-config) | 세션 관련 작업 시 |
 
 ---
 
@@ -79,6 +80,12 @@
 - **ReAct vs Native**: [13-native-function-calling.md](./13-native-function-calling.md) > "비교"
 - **병렬 호출**: [13-native-function-calling.md](./13-native-function-calling.md) > "Best Practices"
 - **성능 개선**: [13-native-function-calling.md](./13-native-function-calling.md) > "성능 비교"
+
+### 🆕 Session Management (v5.1 신규)
+- **자동 세션 감지**: [14-session-management.md](./14-session-management.md) > "자동 세션 감지"
+- **단일 명령어**: [14-session-management.md](./14-session-management.md) > "오컴의 면도날"
+- **유사도 기반**: [14-session-management.md](./14-session-management.md) > "유사도 계산"
+- **데이터 손실 방지**: [14-session-management.md](./14-session-management.md) > "디렉토리 구조"
 
 ### Ralph Loop 관련
 - **무한 루프 구현**: [03-ralph-loop.md](./03-ralph-loop.md) > "Stop Hook 구현"

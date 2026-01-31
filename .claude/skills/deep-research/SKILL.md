@@ -30,13 +30,89 @@ Working Memory (최근 10 iterations):
 
 ## 사이클 실행 흐름
 
-### 1. LOAD (상태 로드) - Memory Blocks Architecture
+### 1. LOAD (상태 로드) - Session Auto-Detection + Memory Blocks
 
-**3-Tier Memory System (Letta-inspired):**
+**자동 세션 관리 (Zero-config):**
 
 ```python
+from session_manager import SessionManager
 from memory_manager import MemoryManager
 
+sm = SessionManager()
+current_question = "$ARGUMENTS"
+
+# 1. 유사 세션 자동 검색
+similar_sessions, match_type = sm.find_similar_sessions(current_question)
+
+if match_type == "exact":
+    # 거의 동일한 질문 → 재개 확인
+    session = similar_sessions[0]
+
+    user_choice = AskUserQuestion(
+        questions=[{
+            "question": f"기존 세션 발견! ({session['iteration']} iterations)\n'{session['question']}'\n\n어떻게 하시겠습니까?",
+            "header": "세션 선택",
+            "multiSelect": False,
+            "options": [
+                {
+                    "label": "계속하기 (Recommended)",
+                    "description": f"기존 연구를 {session['iteration']}번째 iteration부터 계속합니다"
+                },
+                {
+                    "label": "새로 시작하기",
+                    "description": "새로운 세션을 생성합니다"
+                }
+            ]
+        }]
+    )
+
+    if user_choice == "계속하기":
+        sm.switch_session(session["id"])
+        print(f"→ 세션 재개: {session['id']}")
+    else:
+        session_id = sm.create_session(current_question)
+        print(f"→ 새 세션 시작: {session_id}")
+
+elif match_type == "similar":
+    # 유사한 질문들 → 선택지 제공
+    print(f"→ {len(similar_sessions)}개의 유사한 세션 발견\n")
+
+    options = []
+    for i, s in enumerate(similar_sessions[:3]):  # 최대 3개
+        options.append({
+            "label": f"기존 세션 계속: {s['question'][:40]}...",
+            "description": f"{s['iteration']} iterations | 유사도: {s['similarity']*100:.0f}%"
+        })
+
+    options.append({
+        "label": "새 세션 시작",
+        "description": "완전히 새로운 연구를 시작합니다"
+    })
+
+    user_choice = AskUserQuestion(
+        questions=[{
+            "question": "어떤 세션을 사용하시겠습니까?",
+            "header": "세션 선택",
+            "multiSelect": False,
+            "options": options
+        }]
+    )
+
+    if "새 세션" in user_choice:
+        session_id = sm.create_session(current_question)
+        print(f"→ 새 세션 시작: {session_id}")
+    else:
+        # 선택된 세션으로 전환
+        selected_index = options.index([o for o in options if o["label"] == user_choice][0])
+        sm.switch_session(similar_sessions[selected_index]["id"])
+        print(f"→ 세션 재개: {similar_sessions[selected_index]['id']}")
+
+else:
+    # 유사 세션 없음 → 자동 생성
+    session_id = sm.create_session(current_question)
+    print(f"→ 새 세션 시작: {session_id}")
+
+# 2. Memory Blocks 로드
 mm = MemoryManager()
 
 # Working Memory (Hot - 최근 10 iterations only)
@@ -51,19 +127,20 @@ truncated_findings = mm.truncate_findings_for_context(max_findings=30)
 ```
 
 **필수 파일 읽기:**
-- `.research/state.json` → 전체 상태, 가설, 진행도
-- `.research/working_memory.json` → 최근 10 iterations (HOT context)
-- `.research/findings.md` → 핵심 발견 (truncated to 30 최신)
-- `.research/search_history.json` → 중복 방지
+- `.research/current/state.json` → 현재 세션 상태 (symlink를 통해 접근)
+- `.research/current/working_memory.json` → 최근 10 iterations (HOT context)
+- `.research/current/findings.md` → 핵심 발견 (truncated to 30 최신)
+- `.research/current/search_history.json` → 중복 방지
 
-**Observation Masking 효과:**
-- 컨텍스트에 최근 10 iterations만 로드 (JetBrains Research 권장)
-- 오래된 iterations → `.research/archival/` 자동 이동
-- Cost saving + problem-solving ability 유지
+**자동 세션 관리 효과:**
+- 사용자는 `/dr "질문"` 하나만 알면 됨
+- 세션 생성, 감지, 전환 모두 자동
+- 데이터 손실 걱정 없음 (자동 보존)
+- 필요할 때만 선택지 제공
 
-**질문이 새로운 경우:**
-- state.json 초기화
+**첫 실행 시:**
 - 질문 분해 (Query Decomposition)
+- 새 세션 자동 생성
 ```
 
 ### 2. REFLECT (분석) - ultrathink

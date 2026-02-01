@@ -23,21 +23,6 @@ def main():
     tool_input = hook_input.get("tool_input", {})
     session_id = hook_input.get("session_id", "")
 
-    # ═══════════════════════════════════════════════════════════════
-    # 🔍 디버그: 모든 도구 호출 로그 (검증용)
-    # ═══════════════════════════════════════════════════════════════
-    debug_log = Path(".research/.pretooluse_debug.log")
-    try:
-        debug_log.parent.mkdir(parents=True, exist_ok=True)
-        with open(debug_log, 'a') as f:
-            import datetime
-            f.write(f"\n[{datetime.datetime.now()}] PreToolUse Hook\n")
-            f.write(f"tool_name: {tool_name}\n")
-            f.write(f"tool_input: {tool_input}\n")
-            f.write(f"session_id: {session_id}\n")
-    except:
-        pass
-
     # Skill 도구 확인 (tool_name = "Skill")
     # rabbit-hole 또는 rh skill 호출 감지
     is_rabbit_hole_tool = False
@@ -52,8 +37,6 @@ def main():
 
         marker_file = research_dir / f".rh_{session_id}"
         marker_file.touch()
-
-        print(f"✓ rabbit-hole 세션 마커 생성: {session_id[:8]}...")
 
     # 도구 실행은 항상 허용
     output = {

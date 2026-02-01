@@ -66,7 +66,13 @@ else
   exit 1
 fi
 
-echo "📁 $RESEARCH_DIR/current"
+echo ""
+echo "📁 상세 내용: $RESEARCH_DIR/current/"
+echo "   ├── summary.md      (지식 맵)"
+echo "   ├── claims/         (주장들)"
+echo "   └── evidence/       (근거들)"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
 # ═══════════════════════════════════════════════════════════════
@@ -83,21 +89,26 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   SATURATION=$(jq -r '.saturation.confirmed // false' "$RESEARCH_DIR/current/holes.json" 2>/dev/null || echo "false")
 
   # 완료 체크 (3가지 조건)
-  if [ "$STATUS" = "COMPLETE" ]; then
-    echo ""
-    echo "🎉 Research complete! (status: COMPLETE)"
-    exit 0
-  fi
+  CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+  EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
 
-  if [ "$SATURATION" = "true" ]; then
+  if [ "$STATUS" = "COMPLETE" ] || [ "$SATURATION" = "true" ] || ([ "$ITER" -ge 50 ] && [ "$PENDING" -eq 0 ]); then
     echo ""
-    echo "🎉 Research complete! (saturation confirmed)"
-    exit 0
-  fi
-
-  if [ "$ITER" -ge 50 ] && [ "$PENDING" -eq 0 ]; then
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🎉 Research Complete!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "🎉 Research complete! iterations: $ITER"
+    echo "📊 최종 결과:"
+    echo "   • Iterations: $ITER"
+    echo "   • Claims: $CLAIMS_COUNT"
+    echo "   • Evidence: $EVIDENCE_COUNT"
+    echo ""
+    echo "📁 결과 확인:"
+    echo "   cat $RESEARCH_DIR/current/summary.md"
+    echo ""
+    echo "📝 보고서 생성:"
+    echo "   /rh-report"
+    echo ""
     exit 0
   fi
 
@@ -116,21 +127,52 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   LAST_ITER=$ITER
 
   # 배너
+  CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+  EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "🐰 Iteration $i/$MAX_ITERATIONS (current: $ITER, pending: $PENDING)"
+  echo "🐰 Iteration $i/$MAX_ITERATIONS"
+  echo "   📊 iter: $ITER | pending: $PENDING | claims: $CLAIMS_COUNT | evidence: $EVIDENCE_COUNT"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
 
   # Claude 실행 (--print로 완료 후 종료, 출력 캡처)
+  echo "⏳ 연구 중..."
   OUTPUT=$(claude --dangerously-skip-permissions --print "/rh" 2>&1) || true
-  echo "$OUTPUT"
 
-  # 완료 신호 감지 (Ralph 패턴: SKILL.md에서 <complete>DONE</complete> 출력)
+  # 출력에서 주요 정보만 추출 (선택적)
+  # echo "$OUTPUT"  # 전체 출력 보려면 주석 해제
+
+  # 완료 신호 감지 (Ralph 패턴)
   if [[ "$OUTPUT" == *"<complete>DONE</complete>"* ]]; then
+    FINAL_CLAIMS=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+    FINAL_EVIDENCE=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+    FINAL_ITER=$(jq -r '.iteration // 0' "$RESEARCH_DIR/current/holes.json" 2>/dev/null || echo 0)
+
     echo ""
-    echo "🎉 Research complete! (DONE signal received)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🎉 Research Complete!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "📊 최종 결과:"
+    echo "   • Iterations: $FINAL_ITER"
+    echo "   • Claims: $FINAL_CLAIMS"
+    echo "   • Evidence: $FINAL_EVIDENCE"
+    echo ""
+    echo "📁 결과 확인:"
+    echo "   cat $RESEARCH_DIR/current/summary.md"
+    echo ""
+    echo "📝 보고서 생성:"
+    echo "   /rh-report"
+    echo ""
     exit 0
   fi
 
+  # 간단한 상태 업데이트
+  NEW_ITER=$(jq -r '.iteration // 0' "$RESEARCH_DIR/current/holes.json" 2>/dev/null || echo 0)
+  NEW_CLAIMS=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+
+  echo "✅ Iteration $i 완료 (iter: $ITER→$NEW_ITER, claims: $CLAIMS_COUNT→$NEW_CLAIMS)"
   echo ""
   sleep 2
 done

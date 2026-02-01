@@ -1,14 +1,6 @@
----
-name: rabbit-hole
-description: "Rabbit-Hole Research Framework v5. 외부 스크립트 기반 무한 루프."
-argument-hint: [research question]
-allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
----
+# Pathfinder 연구 사이클
 
-# 🐰 Rabbit-Hole v5
-
-> **실행 방법:** 터미널에서 `./rabbit-hole.sh "질문"` 실행
-> 이 문서는 각 iteration에서 Claude가 수행할 작업을 정의합니다.
+> 이 문서는 각 iteration에서 수행할 작업을 정의합니다.
 
 ---
 
@@ -16,7 +8,7 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 
 ```
 1. 한 번 호출 = 한 iteration (SPAWN→SELECT→EXPLORE→SAVE)
-2. 외부 스크립트(rabbit-hole.sh)가 반복 호출
+2. 외부 스크립트가 반복 호출
 3. 모든 상태는 .research/current/에 저장
 ```
 
@@ -28,7 +20,7 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 ┌────────────────────────────────────────────┐
 │  SPAWN → SELECT → EXPLORE → SAVE → 종료   │
 │                                            │
-│  (rabbit-hole.sh가 다시 호출)              │
+│  (pathfinder-research가 다시 호출)         │
 └────────────────────────────────────────────┘
 ```
 
@@ -36,7 +28,7 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 
 ## 시작: 상태 로드 (필수)
 
-**⚠️ 질문 요청 금지 - 항상 파일에서 읽기**
+**질문 요청 금지 - 항상 파일에서 읽기**
 
 ```
 1. Read .research/current/holes.json
@@ -48,7 +40,7 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 
 **holes.json 없으면:** 에러 출력 후 종료
 ```
-❌ No session found. Run: ./rabbit-hole.sh "질문"
+No session found. Run: pathfinder-research "질문"
 ```
 
 ---
@@ -149,19 +141,19 @@ WebSearch로 2-3개 쿼리:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🐰 Iteration {N}
+Iteration {N}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🕳️ 탐색: {hole.question}
+탐색: {hole.question}
 
-📥 발견:
+발견:
   - [NEW/SUPPORTS/REBUTS/QUALIFIES] ...
 
-📋 현재 상태:
+현재 상태:
   - strong: ...
   - uncertain: ...
   - 모름: ...
 
-⏳ pending: {N}개
+pending: {N}개
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -232,6 +224,30 @@ claim에 조건 추가:
 
 ### Summary.md 갱신 규칙
 
+**구조 (순서 유지):**
+```markdown
+# 연구: {제목}
+
+## 질문
+{원래 질문 그대로 - 절대 수정/삭제 금지}
+
+## Claims
+...
+
+## Pending Holes
+...
+
+## 미탐색 영역
+...
+
+---
+Footer
+```
+
+**질문 섹션:**
+- 원래 질문 그대로 유지 (SPAWN, 보고서 작성 시 참조용)
+- 절대 수정하거나 삭제하지 않음
+
 **Claims 테이블:**
 - status별 정렬 (strong → uncertain → weak)
 - Statement는 1줄 요약 (조건 포함)
@@ -274,26 +290,26 @@ iteration ≥ 50 AND pending = 0일 때:
 
 ---
 
-## 한 장 요약
+## 요약
 
 ```
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  🐰 RABBIT-HOLE v5                          ┃
+┃  PATHFINDER RESEARCH                         ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  1회 호출 = 1 iteration                     ┃
-┃                                             ┃
-┃  SPAWN: pending<3 → 6 holes 생성            ┃
-┃    • explore 6 (초기)                       ┃
-┃    • coverage 2 + verify 2 + trace 2        ┃
-┃                                             ┃
-┃  SELECT: interest 높은 hole 선택            ┃
-┃                                             ┃
-┃  EXPLORE: 타입별 컨텍스트 로드              ┃
-┃    • explore → summary.md                   ┃
-┃    • verify/trace → + claim + evidence      ┃
-┃                                             ┃
-┃  판정: NEW/SUPPORTS/REBUTS/QUALIFIES/SKIP   ┃
-┃                                             ┃
-┃  SAVE: ev → claim → summary → holes → 출력 ┃
+┃  1회 호출 = 1 iteration                      ┃
+┃                                              ┃
+┃  SPAWN: pending<3 → 6 holes 생성             ┃
+┃    • explore 6 (초기)                        ┃
+┃    • coverage 2 + verify 2 + trace 2         ┃
+┃                                              ┃
+┃  SELECT: interest 높은 hole 선택             ┃
+┃                                              ┃
+┃  EXPLORE: 타입별 컨텍스트 로드               ┃
+┃    • explore → summary.md                    ┃
+┃    • verify/trace → + claim + evidence       ┃
+┃                                              ┃
+┃  판정: NEW/SUPPORTS/REBUTS/QUALIFIES/SKIP    ┃
+┃                                              ┃
+┃  SAVE: ev → claim → summary → holes → 출력  ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```

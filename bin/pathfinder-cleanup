@@ -1,0 +1,74 @@
+#!/bin/bash
+# Pathfinder Cleanup - 오래된/빈/테스트 세션 정리
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SESSIONS_DIR="$PROJECT_ROOT/.research/sessions"
+DRY_RUN="${1:-false}"
+
+if [ ! -d "$SESSIONS_DIR" ]; then
+    echo "No sessions directory"
+    exit 0
+fi
+
+echo "Pathfinder Cleanup"
+echo "=================================================="
+
+CURRENT_SESSION=""
+if [ -L "$PROJECT_ROOT/.research/current" ]; then
+    CURRENT_SESSION=$(readlink "$PROJECT_ROOT/.research/current" | sed 's/sessions\///')
+    echo "Current: $CURRENT_SESSION (protected)"
+fi
+echo ""
+
+EMPTY_SESSIONS=()
+TEST_SESSIONS=()
+OLD_SESSIONS=()
+
+cd "$SESSIONS_DIR"
+for session in */; do
+    session=${session%/}
+    [ "$session" = "$CURRENT_SESSION" ] && continue
+
+    if [[ "$session" == *"test"* ]]; then
+        TEST_SESSIONS+=("$session"); continue
+    fi
+
+    if [ ! -f "$session/holes.json" ]; then
+        EMPTY_SESSIONS+=("$session"); continue
+    fi
+
+    iteration=$(grep -o '"iteration": [0-9]*' "$session/holes.json" | grep -o '[0-9]*' || echo "0")
+    [ "$iteration" = "0" ] && { EMPTY_SESSIONS+=("$session"); continue; }
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        session_time=$(stat -f %m "$session" 2>/dev/null || echo 0)
+    else
+        session_time=$(stat -c %Y "$session" 2>/dev/null || echo 0)
+    fi
+    age_days=$(( ($(date +%s) - session_time) / 86400 ))
+    [ "$age_days" -gt 7 ] && OLD_SESSIONS+=("$session")
+done
+cd - > /dev/null
+
+total=$((${#EMPTY_SESSIONS[@]} + ${#TEST_SESSIONS[@]} + ${#OLD_SESSIONS[@]}))
+[ "$total" -eq 0 ] && { echo "Nothing to clean"; exit 0; }
+
+echo "Found $total sessions:"
+[ ${#EMPTY_SESSIONS[@]} -gt 0 ] && echo "  Empty: ${EMPTY_SESSIONS[*]}"
+[ ${#TEST_SESSIONS[@]} -gt 0 ] && echo "  Test: ${TEST_SESSIONS[*]}"
+[ ${#OLD_SESSIONS[@]} -gt 0 ] && echo "  Old: ${OLD_SESSIONS[*]}"
+echo ""
+
+if [ "$DRY_RUN" = "true" ] || [ "$DRY_RUN" = "--dry-run" ]; then
+    echo "Dry run - nothing deleted"
+    exit 0
+fi
+
+for session in "${EMPTY_SESSIONS[@]}" "${TEST_SESSIONS[@]}" "${OLD_SESSIONS[@]}"; do
+    rm -rf "$SESSIONS_DIR/$session"
+    echo "Deleted: $session"
+done
+echo "Done"

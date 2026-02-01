@@ -8,33 +8,18 @@
     "MCP_TIMEOUT": "30000"
   },
 
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/tool-use-hook.py",
-            "timeout": 10,
-            "statusMessage": "🐰 Tracking rabbit-hole session..."
-          }
-        ]
-      }
-    ]
-  },
-
   "permissions": {
     "allow": [
       "Read(.research/**)",
       "Write(.research/**)",
       "Edit(.research/**)",
-      "Read(.claude/**)",
+      "Read(prompts/**)",
+      "Read(lib/**)",
       "Bash(curl -L -o .research/papers/*.pdf *)",
       "Bash(jq * .research/*.json)",
       "Bash(cat .research/*.json)",
       "Bash(mkdir -p .research/*)",
-      "Bash(bash .claude/skills/rabbit-hole/scripts/*)",
+      "Bash(bash lib/*)",
       "WebFetch",
       "WebSearch"
     ],

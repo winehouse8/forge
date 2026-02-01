@@ -1,0 +1,147 @@
+#!/bin/bash
+# Pathfinder Research - 심층 연구 자동화 도구
+# 사용법: pathfinder-research "질문" [최대반복횟수]
+#        pathfinder-research --resume
+
+set -e
+
+cleanup() {
+    echo ""
+    echo "Interrupted. Use --resume to continue"
+    # 자식 프로세스 모두 종료
+    pkill -P $$ 2>/dev/null
+    exit 130
+}
+trap cleanup INT TERM
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RESEARCH_DIR="$PROJECT_ROOT/.research"
+PROMPTS_DIR="$PROJECT_ROOT/prompts"
+LIB_DIR="$PROJECT_ROOT/lib"
+MAX_ITERATIONS=50
+
+read_json() {
+    python3 -c "import json; data=json.load(open('$1')); print($2)" 2>/dev/null || echo "$3"
+}
+
+QUESTION=""
+RESUME=false
+QUESTION_PARTS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --resume|-r) RESUME=true; shift ;;
+    --max|-m) MAX_ITERATIONS="$2"; shift 2 ;;
+    *)
+      if [[ "$1" =~ ^[0-9]+$ ]]; then
+        MAX_ITERATIONS="$1"
+      else
+        QUESTION_PARTS+=("$1")
+      fi
+      shift ;;
+  esac
+done
+
+if [ ${#QUESTION_PARTS[@]} -gt 0 ]; then
+  QUESTION="${QUESTION_PARTS[*]}"
+fi
+
+if [ "$RESUME" = true ]; then
+  if [ ! -L "$RESEARCH_DIR/current" ]; then
+    echo "No session to resume"
+    exit 1
+  fi
+  QUESTION=$(read_json "$RESEARCH_DIR/current/holes.json" "data.get('question', '')" "")
+  echo "Resuming: $QUESTION"
+elif [ -n "$QUESTION" ]; then
+  bash "$LIB_DIR/init-session.sh" "$QUESTION"
+else
+  echo "Usage: pathfinder-research \"question\" [max]"
+  echo "       pathfinder-research --resume"
+  exit 1
+fi
+
+echo ""
+echo "Files: $RESEARCH_DIR/current/"
+echo "   summary.md, claims/, evidence/"
+echo ""
+echo "=================================================="
+echo ""
+
+LAST_ITER=-1
+STALL_COUNT=0
+HOLES_FILE="$RESEARCH_DIR/current/holes.json"
+
+for i in $(seq 1 $MAX_ITERATIONS); do
+  ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
+  PENDING=$(read_json "$HOLES_FILE" "len(data.get('pending', []))" "0")
+  STATUS=$(read_json "$HOLES_FILE" "data.get('status', 'running')" "running")
+  SATURATION=$(read_json "$HOLES_FILE" "data.get('saturation', {}).get('confirmed', False)" "false")
+
+  CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+  EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$STATUS" = "COMPLETE" ] || [ "$SATURATION" = "True" ] || ([ "$ITER" -ge 50 ] && [ "$PENDING" -eq 0 ]); then
+    echo ""
+    echo "=================================================="
+    echo "Research Complete!"
+    echo "=================================================="
+    echo "  Iterations: $ITER | Claims: $CLAIMS_COUNT | Evidence: $EVIDENCE_COUNT"
+    echo ""
+    echo "  cat $RESEARCH_DIR/current/summary.md"
+    echo "  pathfinder-report"
+    echo ""
+    exit 0
+  fi
+
+  if [ "$ITER" -eq "$LAST_ITER" ]; then
+    STALL_COUNT=$((STALL_COUNT + 1))
+    if [ "$STALL_COUNT" -ge 3 ]; then
+      echo "Warning: Iteration stuck at $ITER"
+      exit 1
+    fi
+  else
+    STALL_COUNT=0
+  fi
+  LAST_ITER=$ITER
+
+  CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+  EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+
+  echo "=================================================="
+  echo "Iteration $i/$MAX_ITERATIONS"
+  echo "  iter: $ITER | pending: $PENDING | claims: $CLAIMS_COUNT | evidence: $EVIDENCE_COUNT"
+  echo "=================================================="
+  echo ""
+
+  echo "Researching..."
+  PROMPT=$(bash "$LIB_DIR/generate-prompt.sh")
+  OUTPUT=$(cd "$PROJECT_ROOT" && claude --dangerously-skip-permissions --print "$PROMPT" 2>&1) || true
+
+  if [[ "$OUTPUT" == *"<complete>DONE</complete>"* ]]; then
+    FINAL_CLAIMS=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+    FINAL_EVIDENCE=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+    FINAL_ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
+
+    echo ""
+    echo "=================================================="
+    echo "Research Complete!"
+    echo "=================================================="
+    echo "  Iterations: $FINAL_ITER | Claims: $FINAL_CLAIMS | Evidence: $FINAL_EVIDENCE"
+    echo ""
+    echo "  cat $RESEARCH_DIR/current/summary.md"
+    echo "  pathfinder-report"
+    echo ""
+    exit 0
+  fi
+
+  NEW_ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
+  NEW_CLAIMS=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+
+  echo "Done (iter: $ITER->$NEW_ITER, claims: $CLAIMS_COUNT->$NEW_CLAIMS)"
+  echo ""
+  sleep 2
+done
+
+echo "Max iterations reached. Use --resume to continue."

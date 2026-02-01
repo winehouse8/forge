@@ -1,0 +1,39 @@
+#!/bin/bash
+# Pathfinder Status - 현재 연구 상태 확인
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RESEARCH_DIR="$PROJECT_ROOT/.research"
+
+if [ ! -L "$RESEARCH_DIR/current" ]; then
+    echo "No active session. Run: pathfinder-research \"question\""
+    exit 1
+fi
+
+read_json() {
+    python3 -c "import json; data=json.load(open('$1')); print($2)" 2>/dev/null || echo "$3"
+}
+
+HOLES_FILE="$RESEARCH_DIR/current/holes.json"
+QUESTION=$(read_json "$HOLES_FILE" "data.get('question', 'N/A')" "N/A")
+ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
+PENDING=$(read_json "$HOLES_FILE" "len(data.get('pending', []))" "0")
+EXPLORED=$(read_json "$HOLES_FILE" "len(data.get('explored', []))" "0")
+CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
+EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+
+echo ""
+echo "Pathfinder Status"
+echo "=================================================="
+echo "Question: $QUESTION"
+echo ""
+echo "Progress:"
+echo "  Iteration: $ITER"
+echo "  Claims: $CLAIMS_COUNT"
+echo "  Evidence: $EVIDENCE_COUNT"
+echo "  Explored: $EXPLORED | Pending: $PENDING"
+echo ""
+echo "Session: $RESEARCH_DIR/current/"
+echo "=================================================="

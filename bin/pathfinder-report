@@ -1,0 +1,50 @@
+#!/bin/bash
+# Pathfinder Report - 연구 보고서 생성
+# 사용법: pathfinder-report              (최신 세션 분석)
+#        pathfinder-report {세션경로}    (특정 세션 분석)
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RESEARCH_DIR="$PROJECT_ROOT/.research"
+PROMPTS_DIR="$PROJECT_ROOT/prompts"
+
+# 세션 경로 결정
+if [ -n "$1" ]; then
+    # 인자가 있으면 해당 경로 사용
+    SESSION_PATH="$1"
+else
+    # 인자가 없으면 가장 최신 세션 찾기
+    if [ -d "$RESEARCH_DIR/sessions" ]; then
+        LATEST=$(ls -t "$RESEARCH_DIR/sessions" 2>/dev/null | head -1)
+        if [ -n "$LATEST" ]; then
+            SESSION_PATH="$RESEARCH_DIR/sessions/$LATEST"
+        fi
+    fi
+fi
+
+# 세션 존재 확인
+if [ -z "$SESSION_PATH" ] || ([ ! -d "$SESSION_PATH" ] && [ ! -L "$SESSION_PATH" ]); then
+    echo "Session not found"
+    echo ""
+    echo "Usage: pathfinder-report              # latest session"
+    echo "       pathfinder-report {path}       # specific session"
+    echo ""
+    echo "Available sessions:"
+    ls -t "$RESEARCH_DIR/sessions" 2>/dev/null | head -5 || echo "  (none)"
+    exit 1
+fi
+
+# 질문 읽기
+QUESTION=$(python3 -c "import json; data=json.load(open('$SESSION_PATH/holes.json')); print(data.get('question', 'N/A'))" 2>/dev/null || echo "N/A")
+
+echo "Generating report"
+echo "  Session: $SESSION_PATH"
+echo "  Question: $QUESTION"
+echo ""
+
+PROMPT=$(cat "$PROMPTS_DIR/report.md")
+cd "$PROJECT_ROOT" && claude --dangerously-skip-permissions --print "$PROMPT
+
+세션 경로: $SESSION_PATH"

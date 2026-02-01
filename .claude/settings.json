@@ -9,6 +9,13 @@
   },
 
   "hooks": {
+    "PreToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python3 /Users/jaewoo/Desktop/Project/dev/260131_pathfinder/forge/.claude/hooks/tool-use-hook.py",
+        "statusMessage": "Tracking rabbit-hole session..."
+      }]
+    }],
     "Stop": [{
       "hooks": [{
         "type": "command",

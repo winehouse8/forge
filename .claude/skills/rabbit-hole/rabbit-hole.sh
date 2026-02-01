@@ -120,8 +120,8 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   echo "🐰 Iteration $i/$MAX_ITERATIONS (current: $ITER, pending: $PENDING)"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  # Claude 실행 (holes.json에서 상태 읽음)
-  claude --dangerously-skip-permissions "/rh" || true
+  # Claude 실행 (-p로 완료 후 종료, 루프 계속)
+  claude -p --dangerously-skip-permissions "/rh" || true
 
   echo ""
   sleep 1

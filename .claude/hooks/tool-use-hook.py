@@ -42,8 +42,8 @@ def main():
     # rabbit-hole 또는 rh skill 호출 감지
     is_rabbit_hole_tool = False
     if tool_name == "Skill":
-        command = tool_input.get("command", "")
-        is_rabbit_hole_tool = command in ["rabbit-hole", "rh"]
+        skill = tool_input.get("skill", "")  # ✅ 'skill' 필드가 맞음!
+        is_rabbit_hole_tool = skill in ["rabbit-hole", "rh"]
 
     if is_rabbit_hole_tool and session_id:
         # .research/.rh_{session_id} 마커 파일 생성

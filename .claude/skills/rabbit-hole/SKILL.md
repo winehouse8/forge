@@ -34,49 +34,15 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 ### 인자 있으면 (새 세션)
 
 ```bash
-SESSION_ID="research_$(date +%Y%m%d_%H%M%S)" && \
-mkdir -p ".research/sessions/${SESSION_ID}/claims" && \
-mkdir -p ".research/sessions/${SESSION_ID}/evidence" && \
-echo "${SESSION_ID}" > ".research/sessions/${SESSION_ID}/.session_id" && \
-ln -sfn "sessions/${SESSION_ID}" .research/current && \
-echo "✓ Session created: ${SESSION_ID}"
+bash .claude/skills/rabbit-hole/scripts/init.sh "{$ARGUMENTS}"
 ```
 
-**검증:** `ls .research/current/` 명령으로 디렉토리가 생성되었는지 반드시 확인하세요.
-
-이제 세션 디렉토리 안에 초기 파일들을 생성합니다.
-
-Write `.research/current/holes.json` (symlink를 통해 실제로는 `sessions/${SESSION_ID}/holes.json`에 저장됨):
-```json
-{
-  "question": "{$ARGUMENTS}",
-  "pending": [],
-  "explored": [],
-  "next_id": 1,
-  "iteration": 0
-}
-```
-
-Write `.research/current/summary.md` (symlink를 통해 실제로는 `sessions/${SESSION_ID}/summary.md`에 저장됨):
-```markdown
-# Research: {$ARGUMENTS}
-
-## Claims
-| ID | Statement | Status | Strength | Evidence |
-|----|-----------|--------|----------|----------|
-| - | (아직 없음) | - | - | - |
-
-## Pending Holes
-| ID | Type | Question | Interest |
-|----|------|----------|----------|
-| - | (SPAWN 대기) | - | - |
-
-## Open Gaps
-- 전체 주제 탐색 필요
-
----
-iteration 0 | claims: 0 | evidence: 0 | explored: 0
-```
+스크립트가 자동으로:
+- 세션 디렉토리 생성 (`sessions/research_{timestamp}/`)
+- holes.json 초기화
+- summary.md 초기화
+- current symlink 설정
+- 검증 및 성공 메시지 출력
 
 ### 인자 없으면 (이어하기)
 

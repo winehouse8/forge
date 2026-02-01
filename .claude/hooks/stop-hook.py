@@ -120,42 +120,17 @@ def main():
     # ═══════════════════════════════════════════════════════════════
     # 🔍 rabbit-hole 세션 여부 확인 (다중 세션 대응)
     # ═══════════════════════════════════════════════════════════════
-    # 공식 문서: 모든 hook은 session_id를 받음!
-    # https://code.claude.com/docs/en/hooks#common-input-fields
+    # 💡 간단한 판단: state.json 존재 = rabbit-hole 세션
     #
-    # 알고리즘:
-    # 1. rabbit-hole 시작 시: session_id를 .research/.rh_session_id에 저장
-    # 2. stop-hook 실행 시: hook_input의 session_id와 저장된 값 비교
-    # 3. 일치 → 현재 세션이 rabbit-hole 실행 중 → Ralph Loop
-    # 4. 불일치 → 다른 세션 → 정상 종료
+    # 왜 session_id 비교를 안 하는가?
+    # - /rh 명령은 Skill 도구 호출 → UserPromptSubmit hook 트리거 안 됨!
+    # - 따라서 session_id를 사전에 저장할 방법이 없음
+    # - state.json 존재 여부만으로도 충분히 판단 가능
+    #
+    # 로직:
+    # - state.json 존재 → rabbit-hole 세션 → Ralph Loop 적용
+    # - state.json 없음 → 일반 작업 → 정상 종료 허용 (이미 위에서 처리됨)
     # ═══════════════════════════════════════════════════════════════
-
-    SESSION_ID_FILE = ".research/.rh_session_id"
-    current_session_id = hook_input.get("session_id", "")
-
-    is_rabbit_hole_session = False
-
-    # state.json 존재 여부와 무관하게 session_id만 체크
-    if os.path.exists(SESSION_ID_FILE):
-        try:
-            with open(SESSION_ID_FILE, 'r') as f:
-                saved_session_id = f.read().strip()
-
-            # session_id 일치 여부 확인
-            if current_session_id and current_session_id == saved_session_id:
-                # 현재 세션이 rabbit-hole 실행 중!
-                is_rabbit_hole_session = True
-        except:
-            pass
-
-    if not is_rabbit_hole_session:
-        # 일반 작업 또는 다른 세션 → 정상 종료 허용 (Ralph Loop 미적용)
-        output = {
-            "decision": "approve",
-            "reason": "Not this session's rabbit-hole (normal termination allowed)"
-        }
-        print(json.dumps(output))
-        sys.exit(0)
 
     # ═══════════════════════════════════════════════════════════════
     # 🐰 Ralph Loop 철칙: 사용자만 탐험을 멈출 수 있습니다!

@@ -12,10 +12,14 @@ if [ -z "$QUESTION" ]; then
     exit 1
 fi
 
+# 프로젝트 루트 찾기 (Git 루트 또는 현재 디렉토리)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$REPO_ROOT"
+
 # 세션 ID 생성
 SESSION_ID="research_$(date +%Y%m%d_%H%M%S)"
 
-# 세션 디렉토리 생성
+# 세션 디렉토리 생성 (프로젝트 루트 기준)
 mkdir -p ".research/sessions/${SESSION_ID}/claims"
 mkdir -p ".research/sessions/${SESSION_ID}/evidence"
 

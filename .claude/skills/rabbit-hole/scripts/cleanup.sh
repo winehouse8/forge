@@ -4,6 +4,10 @@
 
 set -e
 
+# 프로젝트 루트 찾기 (Git 루트 또는 현재 디렉토리)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$REPO_ROOT"
+
 SESSIONS_DIR=".research/sessions"
 DRY_RUN="${1:-false}"  # 기본값: 실제 삭제
 

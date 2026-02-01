@@ -207,13 +207,17 @@ SAVE 완료 후:
 
 ## 파일 구조
 
+**⚠️ 중요: 모든 경로는 프로젝트 루트(Git 루트) 기준입니다.**
+
 ```
-.research/current/
+{프로젝트 루트}/.research/current/
 ├── summary.md          ← 전체 지식 맵 (항상 참조)
 ├── holes.json          ← 상태 관리
 ├── claims/claim_{N}.md ← 주장
 └── evidence/ev_{N}.md  ← 근거
 ```
+
+**스크립트 실행 시 자동으로 Git 루트를 찾아 해당 위치에 생성합니다.**
 
 ---
 

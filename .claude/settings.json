@@ -9,20 +9,19 @@
   },
 
   "hooks": {
-    "PreToolUse": [{
-      "hooks": [{
-        "type": "command",
-        "command": "python3 /Users/jaewoo/Desktop/Project/dev/260131_pathfinder/forge/.claude/hooks/tool-use-hook.py",
-        "statusMessage": "Tracking rabbit-hole session..."
-      }]
-    }],
-    "Stop": [{
-      "hooks": [{
-        "type": "command",
-        "command": "python3 /Users/jaewoo/Desktop/Project/dev/260131_pathfinder/forge/.claude/hooks/stop-hook.py",
-        "statusMessage": "Checking if research should continue..."
-      }]
-    }]
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/tool-use-hook.py",
+            "timeout": 10,
+            "statusMessage": "🐰 Tracking rabbit-hole session..."
+          }
+        ]
+      }
+    ]
   },
 
   "permissions": {
@@ -35,6 +34,7 @@
       "Bash(jq * .research/*.json)",
       "Bash(cat .research/*.json)",
       "Bash(mkdir -p .research/*)",
+      "Bash(bash .claude/skills/rabbit-hole/scripts/*)",
       "WebFetch",
       "WebSearch"
     ],

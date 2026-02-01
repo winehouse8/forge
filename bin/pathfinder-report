@@ -12,10 +12,8 @@ PROMPTS_DIR="$PROJECT_ROOT/prompts"
 
 # 세션 경로 결정
 if [ -n "$1" ]; then
-    # 인자가 있으면 해당 경로 사용
     SESSION_PATH="$1"
 else
-    # 인자가 없으면 가장 최신 세션 찾기
     if [ -d "$RESEARCH_DIR/sessions" ]; then
         LATEST=$(ls -t "$RESEARCH_DIR/sessions" 2>/dev/null | head -1)
         if [ -n "$LATEST" ]; then
@@ -39,12 +37,19 @@ fi
 # 질문 읽기
 QUESTION=$(python3 -c "import json; data=json.load(open('$SESSION_PATH/holes.json')); print(data.get('question', 'N/A'))" 2>/dev/null || echo "N/A")
 
-echo "Generating report"
+REPORT_FILE="$SESSION_PATH/report.md"
+
+echo "Generating report..."
 echo "  Session: $SESSION_PATH"
 echo "  Question: $QUESTION"
+echo "  Output: $REPORT_FILE"
 echo ""
 
 PROMPT=$(cat "$PROMPTS_DIR/report.md")
+
+# Claude 실행하고 결과를 파일로 저장
 cd "$PROJECT_ROOT" && claude --dangerously-skip-permissions --print "$PROMPT
 
-세션 경로: $SESSION_PATH"
+세션 경로: $SESSION_PATH" > "$REPORT_FILE"
+
+echo "Done: $REPORT_FILE"

@@ -62,7 +62,11 @@ for session in */; do
     fi
 
     # 7일 이상 오래된 세션 확인
-    session_time=$(stat -f %m "$session" 2>/dev/null || stat -c %Y "$session" 2>/dev/null)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        session_time=$(stat -f %m "$session" 2>/dev/null || echo 0)
+    else
+        session_time=$(stat -c %Y "$session" 2>/dev/null || echo 0)
+    fi
     current_time=$(date +%s)
     age_days=$(( (current_time - session_time) / 86400 ))
 
@@ -131,31 +135,38 @@ done
 echo ""
 echo "✅ Cleanup complete: $deleted_count sessions deleted"
 
-# 마커 파일 정리 (연결된 세션이 없는 것)
+# 레거시 파일 정리
 echo ""
-echo "🧹 Cleaning up orphaned marker files..."
+echo "🧹 Cleaning up legacy files..."
 cd .research
-orphaned=0
 
+legacy_cleaned=0
+
+# 레거시 session_mapping.json 제거
+if [ -f "session_mapping.json" ]; then
+    rm -f "session_mapping.json"
+    echo "   ✓ Removed: session_mapping.json"
+    ((legacy_cleaned++))
+fi
+
+# 레거시 .mapping.lock 제거
+if [ -f ".mapping.lock" ]; then
+    rm -f ".mapping.lock"
+    echo "   ✓ Removed: .mapping.lock"
+    ((legacy_cleaned++))
+fi
+
+# 레거시 .rh_{uuid} 마커 제거 (새 .rh_active만 유지)
 for marker in .rh_*; do
-    if [ -f "$marker" ]; then
-        uuid=${marker#.rh_}
-
-        # session_mapping.json에서 확인
-        if [ -f "session_mapping.json" ]; then
-            session_path=$(jq -r --arg uuid "$uuid" '.[$uuid] // empty' session_mapping.json 2>/dev/null)
-
-            if [ -n "$session_path" ] && [ ! -d "$session_path" ]; then
-                rm -f "$marker"
-                echo "   ✓ Removed orphaned marker: $marker"
-                ((orphaned++))
-            fi
-        fi
+    if [ -f "$marker" ] && [ "$marker" != ".rh_active" ]; then
+        rm -f "$marker"
+        echo "   ✓ Removed legacy marker: $marker"
+        ((legacy_cleaned++))
     fi
 done
 
-if [ "$orphaned" -gt 0 ]; then
-    echo "✅ Removed $orphaned orphaned marker files"
+if [ "$legacy_cleaned" -gt 0 ]; then
+    echo "✅ Removed $legacy_cleaned legacy files"
 else
-    echo "✨ No orphaned markers found"
+    echo "✨ No legacy files found"
 fi

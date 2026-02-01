@@ -107,7 +107,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     echo "   cat $RESEARCH_DIR/current/summary.md"
     echo ""
     echo "📝 보고서 생성:"
-    echo "   /rh-report"
+    echo "   ./rh-report.sh"
     echo ""
     exit 0
   fi
@@ -163,7 +163,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     echo "   cat $RESEARCH_DIR/current/summary.md"
     echo ""
     echo "📝 보고서 생성:"
-    echo "   /rh-report"
+    echo "   ./rh-report.sh"
     echo ""
     exit 0
   fi

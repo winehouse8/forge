@@ -29,6 +29,9 @@ echo "${SESSION_ID}" > ".research/sessions/${SESSION_ID}/.session_id"
 # current symlink 생성
 ln -sfn "sessions/${SESSION_ID}" .research/current
 
+# Ralph Loop 마커 파일 생성
+echo "${SESSION_ID}" > ".research/.rh_active"
+
 # 검증
 if [ ! -d ".research/current" ]; then
     echo "❌ Error: Session directory creation failed"

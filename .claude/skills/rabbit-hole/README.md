@@ -19,7 +19,7 @@
 cat .research/current/summary.md
 
 # 보고서 생성
-/rh-report
+./rh-report.sh
 ```
 
 ## 중단/재개

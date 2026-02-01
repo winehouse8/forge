@@ -177,7 +177,13 @@ def main():
     # 결정: approve (종료 허용) vs block (종료 차단, Ralph Loop 계속)
     # ═══════════════════════════════════════════════════════════════
     if should_approve_termination:
-        # 종료 허용: exit code 0
+        # 종료 허용: 마커 파일 정리 + exit code 0
+        try:
+            if os.path.exists(marker_file):
+                os.remove(marker_file)
+        except:
+            pass
+
         output = {
             "decision": "approve",
             "reason": reason

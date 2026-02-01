@@ -20,10 +20,15 @@ def main():
         sys.exit(0)
 
     tool_name = hook_input.get("tool_name", "")
+    tool_input = hook_input.get("tool_input", {})
     session_id = hook_input.get("session_id", "")
 
+    # Skill 도구 확인 (tool_name = "Skill")
     # rabbit-hole 또는 rh skill 호출 감지
-    is_rabbit_hole_tool = tool_name in ["rabbit-hole", "rh"]
+    is_rabbit_hole_tool = False
+    if tool_name == "Skill":
+        command = tool_input.get("command", "")
+        is_rabbit_hole_tool = command in ["rabbit-hole", "rh"]
 
     if is_rabbit_hole_tool and session_id:
         # .research/.rh_{session_id} 마커 파일 생성

@@ -53,6 +53,27 @@ Write `.research/current/holes.json`:
 }
 ```
 
+Write `.research/current/summary.md`:
+```markdown
+# Research: {$ARGUMENTS}
+
+## Claims
+| ID | Statement | Status | Strength | Evidence |
+|----|-----------|--------|----------|----------|
+| - | (아직 없음) | - | - | - |
+
+## Pending Holes
+| ID | Type | Question | Interest |
+|----|------|----------|----------|
+| - | (SPAWN 대기) | - | - |
+
+## Open Gaps
+- 전체 주제 탐색 필요
+
+---
+iteration 0 | claims: 0 | evidence: 0 | explored: 0
+```
+
 ### 인자 없으면 (이어하기)
 
 Read `.research/current/holes.json` → 상태 확인 후 SPAWN으로
@@ -62,12 +83,14 @@ Read `.research/current/holes.json` → 상태 확인 후 SPAWN으로
 ## 1. SPAWN
 
 ```
-holes.json 읽기 → pending < 3이면 holes 생성 → 아니면 통과
+summary.md + holes.json 읽기 → pending < 3이면 holes 생성 → 아니면 통과
 ```
 
 ### 생성 규칙
 
 **pending < 3일 때만 실행:**
+
+**Read `.research/current/summary.md`** - 전체 지식 맵 확인
 
 Extended Thinking으로 **6개** hole 생성:
 
@@ -104,6 +127,8 @@ holes.json에서 interest 높은 hole 선택
 
 ## 3. EXPLORE
 
+**Read `.research/current/summary.md`** - 기존 지식 확인
+
 ### 검색
 
 WebSearch로 2-3개 쿼리:
@@ -113,7 +138,7 @@ WebSearch로 2-3개 쿼리:
 
 ### 판단
 
-각 결과에 대해:
+각 결과를 **summary.md의 Claims와 비교**:
 
 | 판단 | 조건 | 행동 |
 |------|------|------|
@@ -135,8 +160,9 @@ Authority 기준:
 
 1. **Evidence 저장**: `.research/current/evidence/ev_{N}.md`
 2. **Claim 생성/갱신**: `.research/current/claims/claim_{N}.md`
-3. **holes.json 갱신**: pending → explored, iteration++
-4. **상태 출력**:
+3. **Summary 갱신**: `.research/current/summary.md` ← **전체 지식 맵 업데이트**
+4. **holes.json 갱신**: pending → explored, iteration++
+5. **상태 출력**:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -169,6 +195,29 @@ Authority 기준:
 ≤ 0.4: weak
 ```
 
+### Summary.md 갱신 규칙
+
+**Read 모든 claim 파일** → 테이블 작성
+
+**Claims 테이블:**
+- 모든 claim을 status별로 정렬 (strong → uncertain → weak)
+- Statement는 1줄 요약
+- Evidence는 개수만 표시 (ev_1, ev_2, ev_3 등)
+
+**Pending Holes:**
+- interest 높은 순으로 상위 5개만
+- 전체 목록은 holes.json 참조
+
+**Open Gaps:**
+- Claims 테이블을 보고 판단
+- 아직 claim이 없는 핵심 영역 나열
+- 예: "성능 비교", "실패 사례", "적용 한계" 등
+
+**Footer:**
+- 현재 iteration, claims 수, evidence 수, explored holes 수
+
+**목표: 50줄 이내 유지**
+
 ---
 
 ## 자동 반복 (Stop Hook)
@@ -190,6 +239,7 @@ SAVE 완료 후:
 
 ```
 .research/current/
+├── summary.md          ← 전체 지식 맵 (항상 참조)
 ├── holes.json          ← 상태 관리
 ├── claims/claim_{N}.md ← 주장
 └── evidence/ev_{N}.md  ← 근거
@@ -201,15 +251,20 @@ SAVE 완료 후:
 
 ```
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  🐰 RABBIT-HOLE v4                          ┃
+┃  🐰 RABBIT-HOLE v4 + Summary Map            ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
 ┃  INIT (첫 회) → [SPAWN→SELECT→EXPLORE→SAVE] ┃
 ┃                    ↑                  ↓     ┃
 ┃                    └── Stop Hook ─────┘     ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  SPAWN: pending < 3 → 6 holes               ┃
+┃  SPAWN: summary.md 읽기 → 6 holes 생성      ┃
 ┃  SELECT: interest 높은 hole                 ┃
-┃  EXPLORE: WebSearch → NEW/SUPPORTS/REBUTS   ┃
-┃  SAVE: evidence → claim → 출력              ┃
+┃  EXPLORE: summary.md 참조 → 검색 → 판단    ┃
+┃  SAVE: ev → claim → summary → holes → 출력 ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃  📄 summary.md = 전체 지식 맵 (50줄)        ┃
+┃    - Claims 테이블                          ┃
+┃    - Pending Holes (top 5)                  ┃
+┃    - Open Gaps (아직 모르는 것)             ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```

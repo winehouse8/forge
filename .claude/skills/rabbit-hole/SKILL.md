@@ -1,73 +1,75 @@
 ---
 name: rabbit-hole
-description: "Rabbit-Hole Research Framework v4. 4단계 사이클 + Stop Hook 자동 반복."
+description: "Rabbit-Hole Research Framework v5. 외부 스크립트 기반 무한 루프."
 argument-hint: [research question]
 allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 ---
 
-# 🐰 Rabbit-Hole v4
+# 🐰 Rabbit-Hole v5
 
-## 핵심 규칙 (3개)
+> **실행 방법:** 터미널에서 `./rabbit-hole.sh "질문"` 실행
+> 이 문서는 각 iteration에서 Claude가 수행할 작업을 정의합니다.
+
+---
+
+## 핵심 규칙
 
 ```
-1. INIT: 인자 있으면 새 세션, 없으면 기존 세션 로드
-2. 사이클: SPAWN → SELECT → EXPLORE → SAVE (4단계 반복)
-3. 반복: Stop Hook이 SAVE 후 자동으로 SPAWN부터 재시작
+1. 한 번 호출 = 한 iteration (SPAWN→SELECT→EXPLORE→SAVE)
+2. 외부 스크립트(rabbit-hole.sh)가 반복 호출
+3. 모든 상태는 .research/current/에 저장
 ```
 
 ---
 
-## 사이클
+## 사이클 (1회 실행)
 
 ```
-┌──────────────────────────────────────┐
-│  SPAWN → SELECT → EXPLORE → SAVE    │
-│    ↑                          ↓     │
-│    └────── Stop Hook ─────────┘     │
-└──────────────────────────────────────┘
+┌────────────────────────────────────────────┐
+│  SPAWN → SELECT → EXPLORE → SAVE → 종료   │
+│                                            │
+│  (rabbit-hole.sh가 다시 호출)              │
+└────────────────────────────────────────────┘
 ```
 
 ---
 
-## INIT (첫 회만)
+## 시작: 상태 로드 (필수)
 
-### 인자 있으면 (새 세션)
+**⚠️ 질문 요청 금지 - 항상 파일에서 읽기**
 
-```bash
-bash .claude/skills/rabbit-hole/scripts/init.sh "{$ARGUMENTS}"
+```
+1. Read .research/current/holes.json
+   → question, iteration, pending 확인
+2. Read .research/current/summary.md
+   → 지식 맵 확인
+3. SPAWN 진행 (질문 요청 절대 금지)
 ```
 
-스크립트가 자동으로:
-- 세션 디렉토리 생성 (`sessions/research_{timestamp}/`)
-- holes.json 초기화
-- summary.md 초기화
-- current symlink 설정
-- 검증 및 성공 메시지 출력
-
-### 인자 없으면 (이어하기)
-
-Read `.research/current/holes.json` → 상태 확인 후 SPAWN으로
+**holes.json 없으면:** 에러 출력 후 종료
+```
+❌ No session found. Run: ./rabbit-hole.sh "질문"
+```
 
 ---
 
 ## 1. SPAWN
 
 ```
-summary.md + holes.json 읽기 → pending < 3이면 holes 생성 → 아니면 통과
+pending < 3이면 holes 생성 → 아니면 통과
 ```
 
 ### 생성 규칙
 
-**pending < 3일 때만 실행:**
-
-**Read `.research/current/summary.md`** - 전체 지식 맵 확인
-
-Extended Thinking으로 **6개** hole 생성:
-
 | 상황 | 생성 전략 |
 |------|----------|
 | claim 없음 | explore 6개 (정의, 범위, 비교, 사례, 한계, 적용) |
-| claim 있음 | coverage 2 + verify 2 + falsify 2 |
+| claim 있음 | **coverage 2 + verify 2 + trace 2** |
+
+**Hole 타입:**
+- **coverage**: 아직 다루지 않은 영역 탐색
+- **verify**: 기존 claim의 반증/한계 검색
+- **trace**: 원문/데이터/스펙 추적
 
 각 hole:
 ```json
@@ -75,6 +77,7 @@ Extended Thinking으로 **6개** hole 생성:
   "id": "hole_{next_id}",
   "type": "explore|verify|trace",
   "question": "구체적 질문",
+  "target_claim": "claim_N (verify/trace일 경우)",
   "interest": "high|medium|low"
 }
 ```
@@ -86,7 +89,7 @@ Write holes.json (pending에 추가, next_id 증가)
 ## 2. SELECT
 
 ```
-holes.json에서 interest 높은 hole 선택
+pending에서 interest 높은 hole 선택
 ```
 
 우선순위: high > medium > low
@@ -97,28 +100,38 @@ holes.json에서 interest 높은 hole 선택
 
 ## 3. EXPLORE
 
-**Read `.research/current/summary.md`** - 기존 지식 확인
+### 컨텍스트 로드 규칙
+
+| hole.type | 로드할 파일 |
+|-----------|------------|
+| explore | summary.md만 |
+| verify | summary.md + target claim + **해당 claim의 evidence들** |
+| trace | summary.md + target claim + **해당 claim의 evidence들** |
+
+**Evidence 찾기:**
+claim 파일 내 `Evidence:` 섹션에서 ev_N 참조 확인 → 해당 파일들 로드
 
 ### 검색
 
 WebSearch로 2-3개 쿼리:
-- explore: 넓게
-- verify: 반증 ("X fails", "X limitations")
-- trace: 원문 ("X original paper")
+- **explore**: 넓게 탐색
+- **verify**: 반증/한계 ("X fails", "X limitations", "X problems")
+- **trace**: 원문/출처 ("X original paper", "X official spec", "X dataset")
 
 ### 판단
 
-각 결과를 **summary.md의 Claims와 비교**:
+각 결과를 **기존 Claims와 비교**:
 
 | 판단 | 조건 | 행동 |
 |------|------|------|
-| NEW | 새 정보 | claim 생성 |
-| SUPPORTS | 기존 claim 지지 | claim 강화 |
-| REBUTS | 기존 claim 반박 | claim 약화 |
-| SKIP | 중복 또는 Authority < 0.3 | 무시 |
+| **NEW** | 새 정보 | claim 생성 |
+| **SUPPORTS** | 기존 claim 지지 | claim 강화 (+0.1~0.3) |
+| **REBUTS** | 기존 claim 반박 | claim 약화 (-0.3) |
+| **QUALIFIES** | 뒤집지 않지만 조건 추가 | claim에 "단, ~" 추가 |
+| **SKIP** | 중복 또는 Authority < 0.3 | 무시 |
 
-Authority 기준:
-- 논문/공식문서: 0.8-1.0
+**Authority 기준:**
+- 논문/공식문서/스펙: 0.8-1.0
 - 블로그/리뷰: 0.4-0.7
 - 출처불명: < 0.3 (SKIP)
 
@@ -128,9 +141,9 @@ Authority 기준:
 
 ### 순서
 
-1. **Evidence 저장**: `.research/current/evidence/ev_{N}.md`
+1. **Evidence 저장**: `.research/current/evidence/ev_{N}.md` (N = holes.json의 next_id 사용 후 증가)
 2. **Claim 생성/갱신**: `.research/current/claims/claim_{N}.md`
-3. **Summary 갱신**: `.research/current/summary.md` ← **전체 지식 맵 업데이트**
+3. **Summary 갱신**: `.research/current/summary.md`
 4. **holes.json 갱신**: pending → explored, iteration++
 5. **상태 출력**:
 
@@ -141,22 +154,64 @@ Authority 기준:
 🕳️ 탐색: {hole.question}
 
 📥 발견:
-  - [NEW/SUPPORTS/REBUTS] ...
+  - [NEW/SUPPORTS/REBUTS/QUALIFIES] ...
 
-📋 현재 답:
+📋 현재 상태:
   - strong: ...
   - uncertain: ...
   - 모름: ...
 
-⏳ pending holes: {N}개
+⏳ pending: {N}개
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Evidence 파일 포맷
+
+```markdown
+# Evidence {N}
+
+## Source
+- URL: https://...
+- Type: paper | official_doc | blog | review
+- Authority: 0.8
+
+## Summary
+핵심 내용 요약 (3-5줄)
+
+## Quotes
+> 원문 인용 (있으면)
+
+## Related Claims
+- claim_4: SUPPORTS
+- claim_7: REBUTS
+```
+
+### Claim 파일 포맷
+
+```markdown
+# Claim {N}: {제목}
+
+## Statement
+주장 문장 (1-2줄)
+
+단, [조건1], [조건2] (QUALIFIES된 경우)
+
+## Strength
+0.7 (uncertain)
+
+## Evidence
+- ev_3: 출처 요약
+- ev_7: 출처 요약
+
+## Rebuttals
+- ev_12: 반박 내용 요약
 ```
 
 ### Claim Strength 계산
 
 ```
-+0.3 per 1차 출처
-+0.1 per 2차 출처
++0.3 per 1차 출처 (논문/공식문서)
++0.1 per 2차 출처 (블로그/리뷰)
 -0.3 per rebuttal
 → clamp(0.0, 1.0)
 
@@ -165,59 +220,57 @@ Authority 기준:
 ≤ 0.4: weak
 ```
 
+### QUALIFIES 처리
+
+claim에 조건 추가:
+```markdown
+## Statement
+기존 주장 문장
+
+단, [조건1], [조건2]
+```
+
 ### Summary.md 갱신 규칙
 
-**Read 모든 claim 파일** → 테이블 작성
-
 **Claims 테이블:**
-- 모든 claim을 status별로 정렬 (strong → uncertain → weak)
-- Statement는 1줄 요약
-- Evidence는 개수만 표시 (ev_1, ev_2, ev_3 등)
+- status별 정렬 (strong → uncertain → weak)
+- Statement는 1줄 요약 (조건 포함)
+- Evidence는 개수만
 
 **Pending Holes:**
-- interest 높은 순으로 상위 5개만
-- 전체 목록은 holes.json 참조
+- interest 높은 순 상위 5개
 
 **Open Gaps:**
-- Claims 테이블을 보고 판단
-- 아직 claim이 없는 핵심 영역 나열
-- 예: "성능 비교", "실패 사례", "적용 한계" 등
+- 아직 claim 없는 핵심 영역
 
 **Footer:**
-- 현재 iteration, claims 수, evidence 수, explored holes 수
+- iteration, claims 수, evidence 수, explored 수
 
-**목표: 50줄 이내 유지**
+**목표: 200줄 이내**
 
 ---
 
-## 자동 반복 (Stop Hook)
+## 완료 조건
 
-SAVE 완료 후:
-1. Claude 응답 종료 시도
-2. Stop Hook 트리거
-3. holes.json 확인
-4. `decision: block` + `stopReason: "SPAWN부터 시작"`
-5. Claude가 SPAWN 실행
-
-**종료 조건:**
-- iteration ≥ 100
-- 사용자 Ctrl+C
+iteration ≥ 50 AND pending = 0일 때:
+```
+<complete>DONE</complete>
+```
 
 ---
 
 ## 파일 구조
 
-**⚠️ 중요: 모든 경로는 프로젝트 루트(Git 루트) 기준입니다.**
-
 ```
-{프로젝트 루트}/.research/current/
-├── summary.md          ← 전체 지식 맵 (항상 참조)
-├── holes.json          ← 상태 관리
-├── claims/claim_{N}.md ← 주장
-└── evidence/ev_{N}.md  ← 근거
+.research/
+├── current -> sessions/research_YYYYMMDD_HHMMSS/
+└── sessions/
+    └── research_YYYYMMDD_HHMMSS/
+        ├── summary.md
+        ├── holes.json
+        ├── claims/claim_{N}.md
+        └── evidence/ev_{N}.md
 ```
-
-**스크립트 실행 시 자동으로 Git 루트를 찾아 해당 위치에 생성합니다.**
 
 ---
 
@@ -225,20 +278,22 @@ SAVE 완료 후:
 
 ```
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  🐰 RABBIT-HOLE v4 + Summary Map            ┃
+┃  🐰 RABBIT-HOLE v5                          ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  INIT (첫 회) → [SPAWN→SELECT→EXPLORE→SAVE] ┃
-┃                    ↑                  ↓     ┃
-┃                    └── Stop Hook ─────┘     ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  SPAWN: summary.md 읽기 → 6 holes 생성      ┃
-┃  SELECT: interest 높은 hole                 ┃
-┃  EXPLORE: summary.md 참조 → 검색 → 판단    ┃
+┃  1회 호출 = 1 iteration                     ┃
+┃                                             ┃
+┃  SPAWN: pending<3 → 6 holes 생성            ┃
+┃    • explore 6 (초기)                       ┃
+┃    • coverage 2 + verify 2 + trace 2        ┃
+┃                                             ┃
+┃  SELECT: interest 높은 hole 선택            ┃
+┃                                             ┃
+┃  EXPLORE: 타입별 컨텍스트 로드              ┃
+┃    • explore → summary.md                   ┃
+┃    • verify/trace → + claim + evidence      ┃
+┃                                             ┃
+┃  판정: NEW/SUPPORTS/REBUTS/QUALIFIES/SKIP   ┃
+┃                                             ┃
 ┃  SAVE: ev → claim → summary → holes → 출력 ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  📄 summary.md = 전체 지식 맵 (50줄)        ┃
-┃    - Claims 테이블                          ┃
-┃    - Pending Holes (top 5)                  ┃
-┃    - Open Gaps (아직 모르는 것)             ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```

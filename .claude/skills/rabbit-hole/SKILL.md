@@ -34,15 +34,19 @@ allowed-tools: WebSearch, WebFetch, Read, Write, Edit, Bash, Glob, Grep
 ### 인자 있으면 (새 세션)
 
 ```bash
-mkdir -p .research/sessions && \
 SESSION_ID="research_$(date +%Y%m%d_%H%M%S)" && \
 mkdir -p ".research/sessions/${SESSION_ID}/claims" && \
 mkdir -p ".research/sessions/${SESSION_ID}/evidence" && \
+echo "${SESSION_ID}" > ".research/sessions/${SESSION_ID}/.session_id" && \
 ln -sfn "sessions/${SESSION_ID}" .research/current && \
-echo "${SESSION_ID}" > .research/current/.session_id
+echo "✓ Session created: ${SESSION_ID}"
 ```
 
-Write `.research/current/holes.json`:
+**검증:** `ls .research/current/` 명령으로 디렉토리가 생성되었는지 반드시 확인하세요.
+
+이제 세션 디렉토리 안에 초기 파일들을 생성합니다.
+
+Write `.research/current/holes.json` (symlink를 통해 실제로는 `sessions/${SESSION_ID}/holes.json`에 저장됨):
 ```json
 {
   "question": "{$ARGUMENTS}",
@@ -53,7 +57,7 @@ Write `.research/current/holes.json`:
 }
 ```
 
-Write `.research/current/summary.md`:
+Write `.research/current/summary.md` (symlink를 통해 실제로는 `sessions/${SESSION_ID}/summary.md`에 저장됨):
 ```markdown
 # Research: {$ARGUMENTS}
 

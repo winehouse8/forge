@@ -120,11 +120,19 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   echo "🐰 Iteration $i/$MAX_ITERATIONS (current: $ITER, pending: $PENDING)"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  # Claude 실행 (-p로 완료 후 종료, 루프 계속)
-  claude -p --dangerously-skip-permissions "/rh" || true
+  # Claude 실행 (--print로 완료 후 종료, 출력 캡처)
+  OUTPUT=$(claude --dangerously-skip-permissions --print "/rh" 2>&1) || true
+  echo "$OUTPUT"
+
+  # 완료 신호 감지 (Ralph 패턴: SKILL.md에서 <complete>DONE</complete> 출력)
+  if [[ "$OUTPUT" == *"<complete>DONE</complete>"* ]]; then
+    echo ""
+    echo "🎉 Research complete! (DONE signal received)"
+    exit 0
+  fi
 
   echo ""
-  sleep 1
+  sleep 2
 done
 
 echo "⚠️ Max iterations reached. Use --resume to continue."

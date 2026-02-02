@@ -1,0 +1,127 @@
+#!/bin/bash
+# Pathfinder Thesis - 정설 생성 CLI
+# 사용법: pathfinder-thesis              (최신 세션 분석)
+#        pathfinder-thesis {세션경로}    (특정 세션 분석)
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RESEARCH_DIR="$PROJECT_ROOT/.research"
+PROMPTS_DIR="$PROJECT_ROOT/prompts"
+
+# 세션 경로 결정
+if [ -n "$1" ]; then
+    SESSION_PATH="$1"
+else
+    if [ -L "$RESEARCH_DIR/current" ]; then
+        SESSION_PATH="$RESEARCH_DIR/current"
+    elif [ -d "$RESEARCH_DIR/sessions" ]; then
+        LATEST=$(ls -t "$RESEARCH_DIR/sessions" 2>/dev/null | head -1)
+        if [ -n "$LATEST" ]; then
+            SESSION_PATH="$RESEARCH_DIR/sessions/$LATEST"
+        fi
+    fi
+fi
+
+# 세션 존재 확인
+if [ -z "$SESSION_PATH" ] || ([ ! -d "$SESSION_PATH" ] && [ ! -L "$SESSION_PATH" ]); then
+    echo "Error: No active session found"
+    echo ""
+    echo "Usage: pathfinder-thesis              # current/latest session"
+    echo "       pathfinder-thesis {path}       # specific session"
+    echo ""
+    echo "Start a research session first:"
+    echo "  pathfinder-research \"your question\""
+    exit 1
+fi
+
+# cognigraph.json 존재 확인
+CG_FILE="$SESSION_PATH/cognigraph.json"
+if [ ! -f "$CG_FILE" ]; then
+    echo "Error: cognigraph.json not found"
+    echo "  Expected: $CG_FILE"
+    echo ""
+    echo "The research session may not have completed yet."
+    echo "Run 'pathfinder-status' to check progress."
+    exit 1
+fi
+
+# 프롬프트 파일 존재 확인
+PROMPT_FILE="$PROMPTS_DIR/thesis.md"
+if [ ! -f "$PROMPT_FILE" ]; then
+    echo "Error: Prompt file not found"
+    echo "  Expected: $PROMPT_FILE"
+    exit 1
+fi
+
+# state.json 존재 확인 (선택적)
+STATE_FILE="$SESSION_PATH/state.json"
+STATE_CONTENT=""
+if [ -f "$STATE_FILE" ]; then
+    STATE_CONTENT=$(cat "$STATE_FILE")
+fi
+
+# 질문 읽기 (state.json 또는 cognigraph.json에서)
+QUESTION="N/A"
+if [ -f "$STATE_FILE" ]; then
+    QUESTION=$(python3 -c "import json; data=json.load(open('$STATE_FILE')); print(data.get('question', 'N/A'))" 2>/dev/null || echo "N/A")
+fi
+if [ "$QUESTION" = "N/A" ]; then
+    QUESTION=$(python3 -c "import json; data=json.load(open('$CG_FILE')); print(data.get('question', 'N/A'))" 2>/dev/null || echo "N/A")
+fi
+
+THESIS_FILE="$SESSION_PATH/thesis.md"
+
+echo "Generating thesis..."
+echo "  Session: $SESSION_PATH"
+echo "  Question: $QUESTION"
+echo "  Output: $THESIS_FILE"
+echo ""
+
+# 프롬프트 조합
+PROMPT="$(cat "$PROMPT_FILE")
+
+---
+
+## Session Data
+
+### cognigraph.json
+\`\`\`json
+$(cat "$CG_FILE")
+\`\`\`"
+
+# state.json이 있으면 추가
+if [ -n "$STATE_CONTENT" ]; then
+    PROMPT="$PROMPT
+
+### state.json
+\`\`\`json
+$STATE_CONTENT
+\`\`\`"
+fi
+
+PROMPT="$PROMPT
+
+---
+
+위 데이터를 기반으로 thesis.md를 생성해주세요."
+
+# Claude 호출
+cd "$PROJECT_ROOT" && claude --dangerously-skip-permissions --print "$PROMPT" > "$THESIS_FILE"
+
+# 결과 확인
+if [ ! -s "$THESIS_FILE" ]; then
+    echo "Error: Failed to generate thesis (empty output)"
+    rm -f "$THESIS_FILE"
+    exit 1
+fi
+
+echo "Done: $THESIS_FILE"
+echo ""
+echo "--- Thesis Preview (first 30 lines) ---"
+head -30 "$THESIS_FILE"
+echo ""
+echo "..."
+echo ""
+echo "Full thesis: $THESIS_FILE"

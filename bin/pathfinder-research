@@ -1,147 +1,391 @@
 #!/bin/bash
-# Pathfinder Research - 심층 연구 자동화 도구
+# Pathfinder Research v2 - 자율 연구 에이전트
 # 사용법: pathfinder-research "질문" [최대반복횟수]
 #        pathfinder-research --resume
 
 set -e
 
+# === 시그널 핸들러 ===
 cleanup() {
     echo ""
     echo "Interrupted. Use --resume to continue"
-    # 자식 프로세스 모두 종료
-    pkill -P $$ 2>/dev/null
+    pkill -P $$ 2>/dev/null || true
     exit 130
 }
 trap cleanup INT TERM
 
+# === 경로 설정 ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RESEARCH_DIR="$PROJECT_ROOT/.research"
 PROMPTS_DIR="$PROJECT_ROOT/prompts"
 LIB_DIR="$PROJECT_ROOT/lib"
+COGNIGRAPH_PY="$LIB_DIR/cognigraph.py"
 MAX_ITERATIONS=50
+EXPLORE_MAX_RETRY=2
 
-read_json() {
-    python3 -c "import json; data=json.load(open('$1')); print($2)" 2>/dev/null || echo "$3"
+# === Python Helper 호출 ===
+cg_cmd() {
+    python3 "$COGNIGRAPH_PY" "$@"
 }
 
+# === JSON 파싱 유틸 ===
+parse_json() {
+    python3 -c "import json,sys; data=json.loads(sys.stdin.read()); print($1)" 2>/dev/null || echo "$2"
+}
+
+extract_json_block() {
+    # Claude 출력에서 JSON 블록 추출
+    python3 -c "
+import sys
+import re
+import json
+
+text = sys.stdin.read()
+
+# ```json ... ``` 블록 찾기
+pattern = r'\`\`\`json\s*(.*?)\s*\`\`\`'
+match = re.search(pattern, text, re.DOTALL)
+if match:
+    print(match.group(1).strip())
+else:
+    # { } 로 시작/끝나는 JSON 찾기
+    pattern2 = r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})'
+    matches = re.findall(pattern2, text, re.DOTALL)
+    for m in reversed(matches):  # 마지막 JSON 블록 사용
+        try:
+            json.loads(m)
+            print(m)
+            sys.exit(0)
+        except:
+            pass
+    print('{}')
+"
+}
+
+# === 프롬프트 빌드 함수들 ===
+build_select_prompt() {
+    local select_input="$1"
+    local prompt_template
+    prompt_template=$(cat "$PROMPTS_DIR/select.md")
+
+    cat << EOF
+$prompt_template
+
+---
+
+## 현재 상태 (SELECT_INPUT)
+
+\`\`\`json
+$select_input
+\`\`\`
+
+---
+
+위 입력을 분석하고 SELECT_OUTPUT을 JSON으로 반환하세요.
+EOF
+}
+
+build_explore_prompt() {
+    local explore_input="$1"
+    local prompt_template
+    prompt_template=$(cat "$PROMPTS_DIR/explore.md")
+
+    cat << EOF
+$prompt_template
+
+---
+
+## 현재 입력 (EXPLORE_INPUT)
+
+\`\`\`json
+$explore_input
+\`\`\`
+
+---
+
+위 입력에 따라 웹 검색을 수행하고, EXPLORE_OUTPUT을 JSON으로 반환하세요.
+EOF
+}
+
+build_ideate_prompt() {
+    local ideate_input="$1"
+    local prompt_template
+    prompt_template=$(cat "$PROMPTS_DIR/ideate.md")
+
+    cat << EOF
+$prompt_template
+
+---
+
+## 현재 입력 (IDEATE_INPUT)
+
+\`\`\`json
+$ideate_input
+\`\`\`
+
+---
+
+6가지 사고 도구를 모두 적용한 뒤, 가장 좋은 가설 하나를 IDEATE_OUTPUT JSON으로 반환하세요.
+EOF
+}
+
+# === Claude CLI 호출 ===
+call_claude() {
+    local prompt="$1"
+    cd "$PROJECT_ROOT"
+    claude --dangerously-skip-permissions --print "$prompt" 2>&1 || true
+}
+
+# === EXPLORE 재시도 로직 ===
+run_explore_with_retry() {
+    local cognigraph_path="$1"
+    local select_output="$2"
+    local retry_count=0
+    local explore_output=""
+    local status=""
+
+    while [ $retry_count -le $EXPLORE_MAX_RETRY ]; do
+        # EXPLORE 입력 빌드
+        local explore_input
+        explore_input=$(cg_cmd build_explore_input "$cognigraph_path" "$select_output" "$retry_count")
+
+        # 프롬프트 빌드 및 호출
+        local explore_prompt
+        explore_prompt=$(build_explore_prompt "$explore_input")
+
+        echo "  [EXPLORE] Searching... (attempt $((retry_count + 1)))"
+        local raw_output
+        raw_output=$(call_claude "$explore_prompt")
+
+        # JSON 추출
+        explore_output=$(echo "$raw_output" | extract_json_block)
+        status=$(echo "$explore_output" | parse_json "data.get('status', 'failure')" "failure")
+
+        if [ "$status" != "failure" ]; then
+            echo "$explore_output"
+            return 0
+        fi
+
+        # 실패 시 retry_keywords 확인
+        echo "  [EXPLORE] Failed, retrying..."
+        retry_count=$((retry_count + 1))
+
+        # retry_keywords가 있으면 search_query 업데이트
+        local retry_keywords
+        retry_keywords=$(echo "$explore_output" | parse_json "','.join(data.get('retry_keywords', []))" "")
+        if [ -n "$retry_keywords" ]; then
+            # select_output의 search_query를 retry_keywords[0]으로 교체
+            local first_keyword
+            first_keyword=$(echo "$explore_output" | parse_json "data.get('retry_keywords', [''])[0]" "")
+            if [ -n "$first_keyword" ]; then
+                select_output=$(echo "$select_output" | python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+data['search_query'] = '$first_keyword'
+print(json.dumps(data))
+")
+            fi
+        fi
+    done
+
+    # 최종 실패
+    echo '{"status": "failure", "observations": [], "type_a_hypotheses": [], "edges": [], "retry_keywords": []}'
+    return 1
+}
+
+# === 메인 실행 ===
+
+# 인자 파싱
 QUESTION=""
 RESUME=false
 QUESTION_PARTS=()
 
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    --resume|-r) RESUME=true; shift ;;
-    --max|-m) MAX_ITERATIONS="$2"; shift 2 ;;
-    *)
-      if [[ "$1" =~ ^[0-9]+$ ]]; then
-        MAX_ITERATIONS="$1"
-      else
-        QUESTION_PARTS+=("$1")
-      fi
-      shift ;;
-  esac
+    case $1 in
+        --resume|-r)
+            RESUME=true
+            shift
+            ;;
+        --max|-m)
+            MAX_ITERATIONS="$2"
+            shift 2
+            ;;
+        *)
+            if [[ "$1" =~ ^[0-9]+$ ]]; then
+                MAX_ITERATIONS="$1"
+            else
+                QUESTION_PARTS+=("$1")
+            fi
+            shift
+            ;;
+    esac
 done
 
 if [ ${#QUESTION_PARTS[@]} -gt 0 ]; then
-  QUESTION="${QUESTION_PARTS[*]}"
+    QUESTION="${QUESTION_PARTS[*]}"
 fi
 
+# 세션 초기화 또는 재개
 if [ "$RESUME" = true ]; then
-  if [ ! -L "$RESEARCH_DIR/current" ]; then
-    echo "No session to resume"
-    exit 1
-  fi
-  QUESTION=$(read_json "$RESEARCH_DIR/current/holes.json" "data.get('question', '')" "")
-  echo "Resuming: $QUESTION"
+    if [ ! -L "$RESEARCH_DIR/current" ]; then
+        echo "Error: No session to resume"
+        exit 1
+    fi
+    COGNIGRAPH_PATH="$RESEARCH_DIR/current/cognigraph.json"
+    if [ ! -f "$COGNIGRAPH_PATH" ]; then
+        echo "Error: cognigraph.json not found"
+        exit 1
+    fi
+    QUESTION=$(cg_cmd get "$COGNIGRAPH_PATH" "question")
+    echo "Resuming: $QUESTION"
 elif [ -n "$QUESTION" ]; then
-  bash "$LIB_DIR/init-session.sh" "$QUESTION"
+    bash "$LIB_DIR/init-session.sh" "$QUESTION"
+    COGNIGRAPH_PATH="$RESEARCH_DIR/current/cognigraph.json"
 else
-  echo "Usage: pathfinder-research \"question\" [max]"
-  echo "       pathfinder-research --resume"
-  exit 1
+    echo "Usage: pathfinder-research \"question\" [max]"
+    echo "       pathfinder-research --resume"
+    exit 1
 fi
 
 echo ""
-echo "Files: $RESEARCH_DIR/current/"
-echo "   summary.md, claims/, evidence/"
+echo "Session: $RESEARCH_DIR/current/"
+echo "Question: $QUESTION"
 echo ""
 echo "=================================================="
 echo ""
 
-LAST_ITER=-1
+# === 메인 루프 ===
 STALL_COUNT=0
-HOLES_FILE="$RESEARCH_DIR/current/holes.json"
+LAST_ITER=-1
 
-for i in $(seq 1 $MAX_ITERATIONS); do
-  ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
-  PENDING=$(read_json "$HOLES_FILE" "len(data.get('pending', []))" "0")
-  STATUS=$(read_json "$HOLES_FILE" "data.get('status', 'running')" "running")
-  SATURATION=$(read_json "$HOLES_FILE" "data.get('saturation', {}).get('confirmed', False)" "false")
+for loop_i in $(seq 1 $MAX_ITERATIONS); do
+    # 현재 상태 확인
+    STATS=$(cg_cmd stats "$COGNIGRAPH_PATH")
+    ITER=$(echo "$STATS" | parse_json "data.get('iteration', 0)" "0")
+    OBS_COUNT=$(echo "$STATS" | parse_json "data.get('observations', 0)" "0")
+    HYP_COUNT=$(echo "$STATS" | parse_json "data.get('hypotheses', 0)" "0")
+    SATURATED=$(echo "$STATS" | parse_json "str(data.get('saturated', False))" "False")
+    CONFLICTS=$(echo "$STATS" | parse_json "data.get('unresolved_conflicts', 0)" "0")
 
-  CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
-  EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
-
-  if [ "$STATUS" = "COMPLETE" ] || [ "$SATURATION" = "True" ] || ([ "$ITER" -ge 50 ] && [ "$PENDING" -eq 0 ]); then
-    echo ""
+    # 진행 출력
     echo "=================================================="
-    echo "Research Complete!"
+    echo "Loop $loop_i/$MAX_ITERATIONS | Iteration: $ITER"
+    echo "  Obs: $OBS_COUNT | Hyp: $HYP_COUNT | Conflicts: $CONFLICTS"
     echo "=================================================="
-    echo "  Iterations: $ITER | Claims: $CLAIMS_COUNT | Evidence: $EVIDENCE_COUNT"
-    echo ""
-    echo "  cat $RESEARCH_DIR/current/summary.md"
-    echo "  pathfinder-report"
-    echo ""
-    exit 0
-  fi
 
-  if [ "$ITER" -eq "$LAST_ITER" ]; then
-    STALL_COUNT=$((STALL_COUNT + 1))
-    if [ "$STALL_COUNT" -ge 3 ]; then
-      echo "Warning: Iteration stuck at $ITER"
-      exit 1
+    # 포화 상태 감지
+    if [ "$SATURATED" = "True" ]; then
+        echo ""
+        echo "[SATURATED] Research has reached saturation."
+        echo ""
+        echo "Options:"
+        echo "  1. Generate thesis:  pathfinder-report --thesis"
+        echo "  2. Continue anyway:  pathfinder-research --resume"
+        echo "  3. View summary:     cat $RESEARCH_DIR/current/cognigraph.json"
+        echo ""
+        read -p "Generate thesis now? [y/N] " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "Generating thesis..."
+            "$SCRIPT_DIR/pathfinder-report" --thesis 2>/dev/null || echo "Run: pathfinder-report --thesis"
+            exit 0
+        fi
+        echo "Continuing research..."
     fi
-  else
-    STALL_COUNT=0
-  fi
-  LAST_ITER=$ITER
 
-  CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
-  EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+    # Stall 감지
+    if [ "$ITER" -eq "$LAST_ITER" ]; then
+        STALL_COUNT=$((STALL_COUNT + 1))
+        if [ "$STALL_COUNT" -ge 3 ]; then
+            echo "Warning: Iteration stuck at $ITER for 3 loops"
+            echo "Check cognigraph.json for issues"
+            exit 1
+        fi
+    else
+        STALL_COUNT=0
+    fi
+    LAST_ITER=$ITER
 
-  echo "=================================================="
-  echo "Iteration $i/$MAX_ITERATIONS"
-  echo "  iter: $ITER | pending: $PENDING | claims: $CLAIMS_COUNT | evidence: $EVIDENCE_COUNT"
-  echo "=================================================="
-  echo ""
+    # === 1. SELECT ===
+    echo ""
+    echo "  [SELECT] Analyzing state..."
+    SELECT_INPUT=$(cg_cmd build_select_input "$COGNIGRAPH_PATH")
+    SELECT_PROMPT=$(build_select_prompt "$SELECT_INPUT")
+    SELECT_RAW=$(call_claude "$SELECT_PROMPT")
+    SELECT_OUTPUT=$(echo "$SELECT_RAW" | extract_json_block)
 
-  echo "Researching..."
-  PROMPT=$(bash "$LIB_DIR/generate-prompt.sh")
-  OUTPUT=$(cd "$PROJECT_ROOT" && claude --dangerously-skip-permissions --print "$PROMPT" 2>&1) || true
+    SELECT_TARGET=$(echo "$SELECT_OUTPUT" | parse_json "data.get('target_type', 'unknown')" "unknown")
+    SELECT_QUERY=$(echo "$SELECT_OUTPUT" | parse_json "data.get('search_query', '')" "")
+    echo "  [SELECT] Target: $SELECT_TARGET | Query: $SELECT_QUERY"
 
-  if [[ "$OUTPUT" == *"<complete>DONE</complete>"* ]]; then
-    FINAL_CLAIMS=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
-    FINAL_EVIDENCE=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
-    FINAL_ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
+    # === 2. EXPLORE (재시도 포함) ===
+    echo ""
+    EXPLORE_OUTPUT=$(run_explore_with_retry "$COGNIGRAPH_PATH" "$SELECT_OUTPUT")
+    EXPLORE_STATUS=$(echo "$EXPLORE_OUTPUT" | parse_json "data.get('status', 'failure')" "failure")
+
+    NEW_OBS=$(echo "$EXPLORE_OUTPUT" | parse_json "len(data.get('observations', []))" "0")
+    NEW_HYP=$(echo "$EXPLORE_OUTPUT" | parse_json "len(data.get('type_a_hypotheses', []))" "0")
+    echo "  [EXPLORE] Status: $EXPLORE_STATUS | New obs: $NEW_OBS | New hyp: $NEW_HYP"
+
+    # === 3. EXPLORE 결과 반영 ===
+    if [ "$EXPLORE_STATUS" != "failure" ]; then
+        cg_cmd apply_explore "$COGNIGRAPH_PATH" "$SELECT_OUTPUT" "$EXPLORE_OUTPUT" > /dev/null
+    fi
+
+    # === 4. IDEATE (조건부) ===
+    # iteration >= 3 AND iteration % 3 == 0
+    CURRENT_ITER=$(cg_cmd get "$COGNIGRAPH_PATH" "iteration")
+    CURRENT_ITER=${CURRENT_ITER:-0}
+
+    if [ "$CURRENT_ITER" -ge 3 ] && [ $((CURRENT_ITER % 3)) -eq 0 ]; then
+        echo ""
+        echo "  [IDEATE] Generating new hypothesis..."
+        IDEATE_INPUT=$(cg_cmd build_ideate_input "$COGNIGRAPH_PATH")
+        IDEATE_PROMPT=$(build_ideate_prompt "$IDEATE_INPUT")
+        IDEATE_RAW=$(call_claude "$IDEATE_PROMPT")
+        IDEATE_OUTPUT=$(echo "$IDEATE_RAW" | extract_json_block)
+
+        IDEATE_ID=$(echo "$IDEATE_OUTPUT" | parse_json "data.get('hypothesis', {}).get('id', '')" "")
+        if [ -n "$IDEATE_ID" ]; then
+            cg_cmd apply_ideate "$COGNIGRAPH_PATH" "$IDEATE_OUTPUT" > /dev/null
+            IDEATE_SUMMARY=$(echo "$IDEATE_OUTPUT" | parse_json "data.get('hypothesis', {}).get('summary', '')[:60]" "")
+            echo "  [IDEATE] Created: $IDEATE_ID - $IDEATE_SUMMARY..."
+        fi
+    fi
+
+    # === 5. Finalize iteration ===
+    cg_cmd finalize "$COGNIGRAPH_PATH" "$SELECT_OUTPUT" "$EXPLORE_OUTPUT" > /dev/null
+
+    # === 6. Health Check (매 5 iteration) ===
+    NEW_ITER=$(cg_cmd get "$COGNIGRAPH_PATH" "iteration")
+    NEW_ITER=${NEW_ITER:-0}
+
+    if [ $((NEW_ITER % 5)) -eq 0 ] && [ "$NEW_ITER" -gt 0 ]; then
+        echo ""
+        echo "  [HEALTH] Running health check..."
+        ISSUES=$(cg_cmd health_check "$COGNIGRAPH_PATH")
+        if [ "$ISSUES" != "[]" ]; then
+            echo "  [HEALTH] Issues detected: $ISSUES"
+        else
+            echo "  [HEALTH] No issues"
+        fi
+    fi
+
+    # === 7. 상태 출력 ===
+    FINAL_STATS=$(cg_cmd stats "$COGNIGRAPH_PATH")
+    FINAL_OBS=$(echo "$FINAL_STATS" | parse_json "data.get('observations', 0)" "0")
+    FINAL_HYP=$(echo "$FINAL_STATS" | parse_json "data.get('hypotheses', 0)" "0")
 
     echo ""
-    echo "=================================================="
-    echo "Research Complete!"
-    echo "=================================================="
-    echo "  Iterations: $FINAL_ITER | Claims: $FINAL_CLAIMS | Evidence: $FINAL_EVIDENCE"
+    echo "  Done. Iteration: $LAST_ITER -> $NEW_ITER | Obs: $FINAL_OBS | Hyp: $FINAL_HYP"
     echo ""
-    echo "  cat $RESEARCH_DIR/current/summary.md"
-    echo "  pathfinder-report"
-    echo ""
-    exit 0
-  fi
 
-  NEW_ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
-  NEW_CLAIMS=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
-
-  echo "Done (iter: $ITER->$NEW_ITER, claims: $CLAIMS_COUNT->$NEW_CLAIMS)"
-  echo ""
-  sleep 2
+    sleep 1
 done
 
-echo "Max iterations reached. Use --resume to continue."
+echo ""
+echo "=================================================="
+echo "Max iterations ($MAX_ITERATIONS) reached."
+echo "Use --resume to continue or pathfinder-report to generate thesis."
+echo "=================================================="

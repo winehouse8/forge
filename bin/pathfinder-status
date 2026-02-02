@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pathfinder Status - 현재 연구 상태 확인
+# Pathfinder v2 Status - 현재 연구 상태 확인
 
 set -e
 
@@ -12,28 +12,266 @@ if [ ! -L "$RESEARCH_DIR/current" ]; then
     exit 1
 fi
 
-read_json() {
-    python3 -c "import json; data=json.load(open('$1')); print($2)" 2>/dev/null || echo "$3"
+SESSION_DIR="$RESEARCH_DIR/current"
+COGNIGRAPH_FILE="$SESSION_DIR/cognigraph.json"
+
+# Check if cognigraph.json exists
+if [ ! -f "$COGNIGRAPH_FILE" ]; then
+    echo "Error: cognigraph.json not found in session."
+    exit 1
+fi
+
+# Python script for extracting all status data
+read_status() {
+    python3 << 'PYTHON_SCRIPT'
+import json
+import os
+import sys
+
+session_dir = sys.argv[1] if len(sys.argv) > 1 else "."
+cognigraph_file = os.path.join(session_dir, "cognigraph.json")
+hypotheses_dir = os.path.join(session_dir, "hypotheses")
+observations_dir = os.path.join(session_dir, "observations")
+
+try:
+    with open(cognigraph_file, 'r') as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"ERROR:Failed to read cognigraph.json: {e}")
+    sys.exit(1)
+
+# Basic info
+question = data.get('question', 'N/A')
+iteration = data.get('iteration', 0)
+lens_index = data.get('lens_index', 0)
+
+# Count unexplored keywords
+keywords = data.get('keywords', [])
+unexplored_count = sum(1 for k in keywords if not k.get('explored', False))
+
+# Count active conflicts
+conflicts = data.get('conflicts', [])
+active_conflicts = sum(1 for c in conflicts if c.get('status') == 'active')
+
+# Count observations
+obs_count = 0
+if os.path.isdir(observations_dir):
+    obs_count = len([f for f in os.listdir(observations_dir) if f.endswith('.md')])
+
+# Count hypotheses and their states
+hyp_count = 0
+type_a_count = 0
+type_b_count = 0
+state_counts = {'unvisited': 0, 'tested': 0, 'verified': 0, 'rejected': 0}
+
+hypotheses = data.get('hypotheses', [])
+for h in hypotheses:
+    hyp_count += 1
+    h_type = h.get('type', 'A')
+    if h_type == 'A':
+        type_a_count += 1
+    else:
+        type_b_count += 1
+
+    state = h.get('state', 'unvisited')
+    if state in state_counts:
+        state_counts[state] += 1
+    else:
+        state_counts['unvisited'] += 1
+
+# Health issues
+health_issues = []
+
+# Check for stale hypotheses (unvisited for too long)
+for h in hypotheses:
+    if h.get('state') == 'unvisited':
+        created_iter = h.get('created_at_iteration', 0)
+        if iteration - created_iter > 10:
+            health_issues.append(f"Stale hypothesis: {h.get('id', 'unknown')} (unvisited for {iteration - created_iter} iterations)")
+
+# Check for high conflict ratio
+if hyp_count > 0 and active_conflicts > hyp_count * 0.3:
+    health_issues.append(f"High conflict ratio: {active_conflicts} active conflicts")
+
+# Check for exploration stagnation
+if iteration > 20 and unexplored_count == 0 and state_counts['unvisited'] == 0:
+    health_issues.append("Exploration may be stagnating: no unexplored items")
+
+# Check for too many rejected hypotheses
+if hyp_count > 5 and state_counts['rejected'] > hyp_count * 0.7:
+    health_issues.append(f"High rejection rate: {state_counts['rejected']}/{hyp_count} hypotheses rejected")
+
+# Output results
+print(f"QUESTION:{question}")
+print(f"ITERATION:{iteration}")
+print(f"OBS_COUNT:{obs_count}")
+print(f"HYP_COUNT:{hyp_count}")
+print(f"TYPE_A:{type_a_count}")
+print(f"TYPE_B:{type_b_count}")
+print(f"VERIFIED:{state_counts['verified']}")
+print(f"TESTED:{state_counts['tested']}")
+print(f"UNVISITED:{state_counts['unvisited']}")
+print(f"REJECTED:{state_counts['rejected']}")
+print(f"ACTIVE_CONFLICTS:{active_conflicts}")
+print(f"UNEXPLORED:{unexplored_count}")
+print(f"LENS_INDEX:{lens_index}")
+print(f"HEALTH_ISSUES:{';'.join(health_issues) if health_issues else 'None'}")
+PYTHON_SCRIPT
 }
 
-HOLES_FILE="$RESEARCH_DIR/current/holes.json"
-QUESTION=$(read_json "$HOLES_FILE" "data.get('question', 'N/A')" "N/A")
-ITER=$(read_json "$HOLES_FILE" "data.get('iteration', 0)" "0")
-PENDING=$(read_json "$HOLES_FILE" "len(data.get('pending', []))" "0")
-EXPLORED=$(read_json "$HOLES_FILE" "len(data.get('explored', []))" "0")
-CLAIMS_COUNT=$(ls -1 "$RESEARCH_DIR/current/claims/" 2>/dev/null | wc -l | tr -d ' ')
-EVIDENCE_COUNT=$(ls -1 "$RESEARCH_DIR/current/evidence/" 2>/dev/null | wc -l | tr -d ' ')
+# Run Python script and capture output
+STATUS_OUTPUT=$(python3 << PYTHON_SCRIPT
+import json
+import os
+import sys
 
+session_dir = "$SESSION_DIR"
+cognigraph_file = os.path.join(session_dir, "cognigraph.json")
+hypotheses_dir = os.path.join(session_dir, "hypotheses")
+observations_dir = os.path.join(session_dir, "observations")
+
+try:
+    with open(cognigraph_file, 'r') as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"ERROR:Failed to read cognigraph.json: {e}")
+    sys.exit(1)
+
+# Basic info
+question = data.get('question', 'N/A')
+iteration = data.get('iteration', 0)
+lens_index = data.get('lens_index', 0)
+
+# Count unexplored keywords
+keywords = data.get('keywords', [])
+unexplored_count = sum(1 for k in keywords if not k.get('explored', False))
+
+# Count active conflicts
+conflicts = data.get('conflicts', [])
+active_conflicts = sum(1 for c in conflicts if c.get('status') == 'active')
+
+# Count observations
+obs_count = 0
+if os.path.isdir(observations_dir):
+    obs_count = len([f for f in os.listdir(observations_dir) if f.endswith('.md')])
+
+# Count hypotheses and their states
+hyp_count = 0
+type_a_count = 0
+type_b_count = 0
+state_counts = {'unvisited': 0, 'tested': 0, 'verified': 0, 'rejected': 0}
+
+hypotheses = data.get('hypotheses', [])
+for h in hypotheses:
+    hyp_count += 1
+    h_type = h.get('type', 'A')
+    if h_type == 'A':
+        type_a_count += 1
+    else:
+        type_b_count += 1
+
+    state = h.get('state', 'unvisited')
+    if state in state_counts:
+        state_counts[state] += 1
+    else:
+        state_counts['unvisited'] += 1
+
+# Health issues
+health_issues = []
+
+# Check for stale hypotheses (unvisited for too long)
+for h in hypotheses:
+    if h.get('state') == 'unvisited':
+        created_iter = h.get('created_at_iteration', 0)
+        if iteration - created_iter > 10:
+            health_issues.append(f"Stale hypothesis: {h.get('id', 'unknown')} (unvisited for {iteration - created_iter} iterations)")
+
+# Check for high conflict ratio
+if hyp_count > 0 and active_conflicts > hyp_count * 0.3:
+    health_issues.append(f"High conflict ratio: {active_conflicts} active conflicts")
+
+# Check for exploration stagnation
+if iteration > 20 and unexplored_count == 0 and state_counts['unvisited'] == 0:
+    health_issues.append("Exploration may be stagnating: no unexplored items")
+
+# Check for too many rejected hypotheses
+if hyp_count > 5 and state_counts['rejected'] > hyp_count * 0.7:
+    health_issues.append(f"High rejection rate: {state_counts['rejected']}/{hyp_count} hypotheses rejected")
+
+# Output results
+print(f"QUESTION:{question}")
+print(f"ITERATION:{iteration}")
+print(f"OBS_COUNT:{obs_count}")
+print(f"HYP_COUNT:{hyp_count}")
+print(f"TYPE_A:{type_a_count}")
+print(f"TYPE_B:{type_b_count}")
+print(f"VERIFIED:{state_counts['verified']}")
+print(f"TESTED:{state_counts['tested']}")
+print(f"UNVISITED:{state_counts['unvisited']}")
+print(f"REJECTED:{state_counts['rejected']}")
+print(f"ACTIVE_CONFLICTS:{active_conflicts}")
+print(f"UNEXPLORED:{unexplored_count}")
+print(f"LENS_INDEX:{lens_index}")
+print(f"HEALTH_ISSUES:{';'.join(health_issues) if health_issues else 'None'}")
+PYTHON_SCRIPT
+)
+
+# Check for Python errors
+if echo "$STATUS_OUTPUT" | grep -q "^ERROR:"; then
+    echo "$STATUS_OUTPUT" | sed 's/^ERROR:/Error: /'
+    exit 1
+fi
+
+# Parse output
+parse_field() {
+    echo "$STATUS_OUTPUT" | grep "^$1:" | sed "s/^$1://"
+}
+
+QUESTION=$(parse_field "QUESTION")
+ITERATION=$(parse_field "ITERATION")
+OBS_COUNT=$(parse_field "OBS_COUNT")
+HYP_COUNT=$(parse_field "HYP_COUNT")
+TYPE_A=$(parse_field "TYPE_A")
+TYPE_B=$(parse_field "TYPE_B")
+VERIFIED=$(parse_field "VERIFIED")
+TESTED=$(parse_field "TESTED")
+UNVISITED=$(parse_field "UNVISITED")
+REJECTED=$(parse_field "REJECTED")
+ACTIVE_CONFLICTS=$(parse_field "ACTIVE_CONFLICTS")
+UNEXPLORED=$(parse_field "UNEXPLORED")
+LENS_INDEX=$(parse_field "LENS_INDEX")
+HEALTH_ISSUES=$(parse_field "HEALTH_ISSUES")
+
+# Display status
 echo ""
-echo "Pathfinder Status"
+echo "Pathfinder v2 Status"
 echo "=================================================="
 echo "Question: $QUESTION"
 echo ""
 echo "Progress:"
-echo "  Iteration: $ITER"
-echo "  Claims: $CLAIMS_COUNT"
-echo "  Evidence: $EVIDENCE_COUNT"
-echo "  Explored: $EXPLORED | Pending: $PENDING"
+echo "  Iteration: $ITERATION"
+echo "  Observations: $OBS_COUNT"
+echo "  Hypotheses: $HYP_COUNT (A: $TYPE_A, B: $TYPE_B)"
+echo "    - verified: $VERIFIED"
+echo "    - tested: $TESTED"
+echo "    - unvisited: $UNVISITED"
+echo "    - rejected: $REJECTED"
 echo ""
-echo "Session: $RESEARCH_DIR/current/"
+echo "Active Conflicts: $ACTIVE_CONFLICTS"
+echo "Unexplored: $UNEXPLORED"
+echo "Lens Index: $LENS_INDEX/6"
+echo ""
+echo "Health Issues:"
+if [ "$HEALTH_ISSUES" = "None" ]; then
+    echo "  None"
+else
+    # Split by semicolon and print each issue
+    echo "$HEALTH_ISSUES" | tr ';' '\n' | while read -r issue; do
+        if [ -n "$issue" ]; then
+            echo "  - $issue"
+        fi
+    done
+fi
+echo ""
+echo "Session: $SESSION_DIR/"
 echo "=================================================="

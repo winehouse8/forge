@@ -211,9 +211,14 @@ CogniGraph = 파일들을 연결하는 네비게이션 지도
 ```
 unvisited  → 아직 한 번도 탐색 안 됨 (검증 대기)
 tested     → 1회 이상 탐색됨 (strength 변동 중)
-verified   → 충분히 검증됨 (strength >= 0.65 AND visit_count >= 2)
+verified   → 충분히 검증됨:
+             - strength >= 0.65 AND
+             - visit_count >= 2 AND
+             - 강한 반박(weight >= 0.5) 없음 (★ v2.5)
 rejected   → 기각됨 (strength < 0.25)
 ```
+
+**verified의 의미:** "지지가 많다"가 아니라 **"반박을 견뎠다"**
 
 **삭제된 것들:**
 - ~~exploring~~: SELECT 시작~UPDATE 완료는 한 iteration 내에서 끝남. 중간 상태 불필요
@@ -561,9 +566,24 @@ EXPLORE_OUTPUT:
   # ... 기존 필드
   conflict_resolution: {         # 충돌 해결 정보 (있으면)
     conflict_edge: {from, to},
-    resolution_type: "condition_difference" | "one_rejected" | "merged",
-    description: "도메인 특화 시 fine-tuning, 실시간 시 RAG"
+    resolution_type: "condition_difference" | "definition_mismatch" | "scope_mismatch" | "one_rejected" | "merged",
+    description: "..."
   } | null
+```
+
+**resolution_type 정의:**
+```
+condition_difference  - 조건에 따라 둘 다 맞음
+                        예: "컨텍스트 <32K: 인덱싱, >100K: 압축"
+
+definition_mismatch   - 용어의 정의가 다름 (★ v2.5 추가)
+                        예: "hyp_A2는 RAG='vector retrieval', hyp_A4는 RAG='retrieval+rerank'"
+
+scope_mismatch        - 적용 범위가 다름 (★ v2.5 추가)
+                        예: "hyp_A1은 텍스트 전용, hyp_A3은 멀티모달 포함"
+
+one_rejected          - 한쪽이 틀림
+merged                - 통합됨
 ```
 
 **UPDATE에서 적용:**
@@ -904,7 +924,14 @@ def finalize_iteration(cg, select_output, explore_output):
 
             # 상태 전환
             if hyp["visit_count"] >= 2 and hyp["strength"] >= 0.65:
-                hyp["status"] = "verified"
+                # ★ v2.5: 강한 반박이 없어야 verified (반박을 견뎠다는 의미)
+                has_strong_contradict = any(
+                    e["to"] == target_id and e["type"] == "CONTRADICTS" and e["weight"] >= 0.5
+                    for e in cg["edges"]
+                )
+                if not has_strong_contradict:
+                    hyp["status"] = "verified"
+                # else: tested 유지 (반박 해결 필요)
             elif hyp["strength"] < 0.25:
                 hyp["status"] = "rejected"
             elif hyp["status"] == "unvisited":
@@ -1374,6 +1401,7 @@ Iteration 8:
 | v2.2 | 2024-02 | 논리 충돌 해결, 미정의 로직 보완 |
 | v2.3 | 2024-02 | 인터페이스 계약 추가, 컴포넌트 간 연결 명확화 |
 | v2.4 | 2024-02 | 컴포넌트 간 유기적 소통 강화, 책임 분리 |
+| v2.5 | 2024-02 | verified 조건 강화, resolution_type 확장 |
 
 ### v2.1 주요 변경사항
 
@@ -1473,6 +1501,20 @@ Iteration 8:
 **중복 방지:**
 - `edge_exists()`: 동일 엣지 중복 추가 방지
 - unexplored 키워드 중복 체크
+
+### v2.5 주요 변경사항
+
+**verified 조건 강화:**
+- 기존: `strength >= 0.65 AND visit_count >= 2`
+- 추가: `AND 강한 반박(weight >= 0.5) 없음`
+- **의미 변경:** "지지가 많다" → "반박을 견뎠다"
+- 강한 반박이 있으면 tested 유지, 반박 해결 후 verified 가능
+
+**resolution_type 확장:**
+- 기존: `condition_difference | one_rejected | merged`
+- 추가: `definition_mismatch | scope_mismatch`
+- **이유:** 연구에서 대부분의 충돌은 "A vs B"가 아니라 "같은 용어를 다르게 정의"
+- 예: RAG='vector retrieval' vs RAG='retrieval+rerank+tool'
 
 ---
 
